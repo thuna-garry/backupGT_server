@@ -1,4 +1,4 @@
-#!/bin/sh
+#! /bin/sh
 
 ###############################################################################
 # Utility script to generate a batch of ssh keys for use by backupGT when

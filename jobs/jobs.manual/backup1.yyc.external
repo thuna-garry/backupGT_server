@@ -1,10 +1,11 @@
 #! /bin/sh
 
-#userDir=${0%/*}/../..
-userDir=/usr/local/backupGT
+jobFile=`readlink -f $0`
+jobName=${0##*/}
+bgtDir=/usr/local/backupGT_server
 
-export PATH=${userDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
-(printenv > ${userDir}/tmp/job.`basename $0`.printenv)
+export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+(printenv > ${bgtDir}/tmp/job.${jobName}.printenv)
 
 
 #############################################################

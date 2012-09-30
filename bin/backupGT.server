@@ -69,7 +69,7 @@
 #             archiveLog -x -p 0,0,0,0,360' options (the -x and -p are
 #             to allow custom retension management on stored backup sets).
 #
-#   relVol    scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
+#   relDS     scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
 #             values: a valid zfs dataset name
 #             Where the module is a zfs dataset this is the relative dataset
 #             name of the dataset - ie the full dataset name with the STORAGE_DS
@@ -149,13 +149,13 @@
 #             values: a valid directory on the targetHost
 #             The diectory on the target host where the backup will be rooted.
 #
-#   rootVol   scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
+#   rootDS    scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
 #             values: a valid zfs dataset name
 #             This options provide the first part of the module's full dataset
 #             name.  The latter part of the dataset name is provided by the
-#             relVol option (below).
+#             relDS option (above).
 #
-#   tmpVol    scope: zfs.rsync    suppliedBy: targetHost (required)
+#   tmpDS     scope: zfs.rsync    suppliedBy: targetHost (required)
 #             values: a valid zfs dataset name
 #             The dataset on the target host where the rsync transfer will be
 #             rooted.  This is generally the directoy where the target host
@@ -170,7 +170,7 @@
 
 
 ###############################################################################
-# get user definced globals
+# get user defined globals
 ###############################################################################
 . ${0%/*}/backupGT.conf
 
@@ -358,7 +358,7 @@ parseOptions() {
                 ;;
 
             j)
-                JOB_PATH=`$READLINK -f "${OPTARG}"`
+                JOB_PATH="${OPTARG}"
                 if [ ! -f "$JOB_PATH" ]; then
                     $ECHO "job path $JOB_PATH is not accessible" 1>&2
                     printMiniUsage 1>&2
@@ -610,7 +610,7 @@ doModule_file () {
 
     # make sure that the modDir exists
     if [ ! -d "$modDir" ]; then    
-        if [ "$CREATE_NEW_DIRS_AS_ZFS_VOL" = "yes" ]; then
+        if [ "$CREATE_NEW_DIRS_AS_ZFS_DS" = "yes" ]; then
             $SUDO $ZFS create -p -o mountpoint=$modDir $STORAGE_DS/$useHost/$useMod
         else
             $MKDIR -p -m 750 $workDir
@@ -836,13 +836,13 @@ doModule_zfs () {
     local modComment="$*"
 
     # ensure that tmporary dataset exists
-    if [ -z "`$ZFS list -o name | grep $TMP_VOL`" ] ; then
-        $SUDO $ZFS create -o quota=$TMP_VOL_MAX_SIZE $TMP_VOL
+    if [ -z "`$ZFS list -o name | grep $TMP_DS`" ] ; then
+        $SUDO $ZFS create -o quota=$TMP_DS_MAX_SIZE $TMP_DS
     fi
-    if [ -n "$TMP_VOL_MAX_SIZE" ] ; then
-        $SUDO $ZFS set quota=$TMP_VOL_MAX_SIZE $TMP_VOL
+    if [ -n "$TMP_DS_MAX_SIZE" ] ; then
+        $SUDO $ZFS set quota=$TMP_DS_MAX_SIZE $TMP_DS
     fi
-    TMP_DIR="`$ZFS list -H -r -o mountpoint $TMP_VOL`"
+    TMP_DIR="`$ZFS list -H -r -o mountpoint $TMP_DS`"
     $SUDO $CHOWN $USER_NUM:$GROUP_NUM $TMP_DIR
 
     local workLog=${LOG_ROOT}/${MODULE}.log
@@ -852,9 +852,9 @@ doModule_zfs () {
 doModule_zfs2 () {
     local modComment="$*"
     local method=` $ECHO $modComment | parseAssignment method`
-    local relVol=` $ECHO $modComment | parseAssignment relVol`
+    local relDS=`  $ECHO $modComment | parseAssignment relDS`
 
-    local dataset=${STORAGE_DS}/${relVol}
+    local dataset=${STORAGE_DS}/${relDS}
     local timeStamp=`$DATE_CMD`
     local elapsedStart=`$ELAPSED_CMD`
     local workDir=${TMP_DIR}
