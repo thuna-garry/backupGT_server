@@ -1,0 +1,1126 @@
+#! /usr/local/bin/bash
+
+###############################################################################
+# As best as possible this script has been authored to
+# run without elevated privledges.  However a few exceptions
+# are required, so please make (and adjust as necessary) the
+# following sudo entries:
+#
+# assuming that this script will be run as user 'backupGT'
+# and that the STORAGE_ROOT (set in the conf file) is set '/someDir/backupGT'
+#
+#   Defaults:backup  !requiretty
+#   backupGT ALL = (root) NOPASSWD: /bin/rm -* /someDir/backupGT/*
+#   backupGT ALL = (root) NOPASSWD: /usr/bin/rsync
+#   backupGT ALL = (root) NOPASSWD: /usr/bin/ssh
+#
+# for example on a QNAP it might be something like
+#   Defaults:backupGT  !requiretty
+#   backupGT ALL = (admin) NOPASSWD: /bin/rm -* /share/backupGT/*
+#   backupGT ALL = (admin) NOPASSWD: /opt/backupGT/bin/rsync-static-stripped
+#   backupGT ALL = (admin) NOPASSWD: /usr/bin/ssh
+#
+###############################################################################
+# Generally a backup will consist of two stages:
+#   1) connect to the target host and retrieve a listing of modules to backup
+#   2) iterate through the modules backing up each one
+#
+# When the target supplies the module list it will do so in a manner similar
+# to that of rsync.  Specifically it will be a text only list with one line
+# for each module as:  moduleName\tmoduleComment\n where
+#   moduleName:    must meet the syntax rules of an rsynd.conf module name
+#   moduleComment: will be interpreted as a space delimited list of options 
+#                  where each option is of the form option=value
+#
+# The options specify how each module should be backed up and will vary
+# depending on the specific type of backup method.  All options and values
+# are case sensitive
+#   option    usage    
+#   ======    ===================================================
+#   method    scope: all    suppliedBy: targetHost (required)
+#             values: < rsync | tar | zfs | zfs.rsync >
+#             The method to use for backing up the module.
+#
+#   auto      scope: any    suppliedBy: targetHost (optional)
+#             values: < true | false >
+#             Should this module be included when default modules are being
+#             backed up.
+#
+#             If the module is set as 'auto = false' then backupGT will     
+#             exclude the module from the list it provides from the target
+#             host when a full module list is requested (this is achived
+#             with the magic cookie target name _listModues") and therefore
+#             will not be backed up by default.  However, the module
+#             can still be backed up by backupGT if listed explicitly on
+#             the command line with the '-s' option.
+#        
+#             The latter can be quite useful in specific cases.  One
+#             example is a server running oracle that I am responsible
+#             to back up.  The oracle software, configuration, and its
+#             periodic exports are each backed up daily as separate modules
+#             so each has auto=true in the comment.  The archivelogs
+#             (which for those unfamiliar with oracle are log files needed
+#             for point-in-time recovery) need to be backed up very
+#             frequently so if the server goes up in flames we can recover
+#             to the point in time of the last log entry.  In this case
+#             I have marked the module with 'auto = false' so that it is
+#             not part of the daily 'do all modules' backup, and a separate
+#             cron entry runs backupGT every twenty minutes with '-s
+#             archiveLog -x -p 0,0,0,0,360' options (the -x and -p are
+#             to allow custom retension management on stored backup sets).
+#
+#   relVol    scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
+#             values: a valid zfs dataset name
+#             Where the module is a zfs dataset this is the relative dataset
+#             name of the dataset - ie the full dataset name with the STORAGE_DS
+#             prefix removed.  This is necessary because the target host and
+#             backup server may have different STORAGE_DSs (both in name and
+#             depth) and they are not (nor need to be) known to each other.
+#
+#
+#   origHost  scope: rsync,tar   suppliedBy: targetHost (optional)
+#             values: a valid (DNS) host name 
+#             Where the target host has a backup repository for some other
+#             target host and this backup will be a replicated copy, this is
+#             the hostName of the originaing (master) copy.
+#
+#   origMod   scope: rsync,tar    suppliedBy: targetHost (optional)
+#             values: a valid module name (without whitespace)
+#             Where the target host has a backup repository for some other
+#             target host and this backup will be a replicated copy, this is
+#             the hostName of the originaing (master) copy.  The value must
+#             meet the syntax rules of an rsynd.conf module names and
+#             additionally may not have embedded whitespace.
+#
+#   origName  scope: rsync,tar    suppliedBy: targetHost (optional)
+#             values: a valid file name (without whitespace)
+#             Where the target host has a backup repository for some other
+#             target host and this backup will be a replicated copy, this is
+#             the original name of the backup.  The origName of a backup will
+#             typically have embedded the date when the original backup was
+#             made, and its retension set identified.
+#
+#   key       scope: rsync,tar    suppliedBy: targetHost (optional)
+#             values: a valid ssh key file enumerator (explained below)
+#             Where the target host has a simplified ssh server which does
+#             not provide SSH_ORIGINAL_COMMAND environment variable, there
+#             is no convenient way to notify the target as to which module
+#             is being requested by the backup service.  Using the 'key'
+#             option provides a means to communicate the reqested module by
+#             having the target enumerate each module with a key value.  The
+#             backup service will then use a different (enumerated) ssh key
+#             for each module request.  This option tells the backup service
+#             which ssh key to use. The backup service provider will need to
+#             have previously supplied/configured the target with a sufficient
+#             number of (enumerated) ssh keys.
+#
+#             The key value will be used on the backup service side (this side)
+#             to select a keyfile for use by the ssh connection.  Specifically
+#             the SSH_OPTS string will be searched for a key-file name and the
+#             key option value will be used as a replacement string to modify
+#             any found key-file name to an emumerated key-file name.
+# 
+#             For example;
+#                  if the option was specified as 'key=345'
+#             and  the KEYFILE_SUFFIX (config variable) was '.key'
+#             and  SSH_OPTS contained the string 'my_rsa_private.key'
+#             then SSH_OPTS will be modified so that any occurance of '.key'
+#                  is replaced with '_345.key' and the result will be
+#                  'my_rsa_private_345.key'
+# 
+#           NOTE: targets requiring the use of the 'key' option are unable
+#                 to use any backupServer specified options
+# 
+#   lastSnap  scope: zfs,zfs.rsync    suppliedBy: backupServer (required)
+#             values: a valid zfs snapshot name
+#             When backing up zfs snapshots incrementally the target host
+#             needs to know the last snapshot that has been cloned to the
+#             backup server.  This option communicates to the target host
+#             the snapshot name (that portion of the full name which appears
+#             after the '@'). 
+#
+# The following options are used/required by the target but are unused by this 
+# script.  As any options received by the target are passed back to it as part
+# of the requesting command, the target can use additional options to store
+# target-local module information.  The options listed here are those that are
+# used/required by the companion backupGT_target script
+#
+#   path      scope: rsync,tar    suppliedBy: targetHost (required)
+#             values: a valid directory on the targetHost
+#             The diectory on the target host where the backup will be rooted.
+#
+#   rootVol   scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
+#             values: a valid zfs dataset name
+#             This options provide the first part of the module's full dataset
+#             name.  The latter part of the dataset name is provided by the
+#             relVol option (below).
+#
+#   tmpVol    scope: zfs.rsync    suppliedBy: targetHost (required)
+#             values: a valid zfs dataset name
+#             The dataset on the target host where the rsync transfer will be
+#             rooted.  This is generally the directoy where the target host
+#             will marshall/spool the exported zfs snapshot(s) prior to
+#             tranferring via rsync.
+#
+###############################################################################
+# bugs:
+#     module names must meet the syntax rules of an rsynd.conf module names
+#     and additionally cannot have embedded whitespace
+###############################################################################
+
+
+###############################################################################
+# get user definced globals
+###############################################################################
+. ${0%/*}/backupGT.conf
+
+# redefine $SUDO to include the configured user
+SUDO=""
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+fi
+
+
+###############################################################################
+# globals
+###############################################################################
+LAST_MODIFIED_DATE='2012-06-20'
+
+DATE_CMD="$DATE -u +%Y.%m.%d-%H%Mz"
+ELAPSED_CMD="$DATE +%s"
+
+
+###############################################################################
+# process options
+###############################################################################
+printFullUsage() {
+    $ECHO "###############################################################################"
+    $ECHO "# backupGT for servers"
+    $ECHO "# Author: Garry Thuna"
+    $ECHO "# Created: 11/10/2009"
+    $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
+    $ECHO "###############################################################################"
+    $ECHO
+    $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <jobPath>] [-q] [-D]"
+    $ECHO "          [-c <duration>]"
+    $ECHO "Options:"
+    $ECHO "   -h   Hostname for this backup"
+    $ECHO "   -t   The transport type to use for communication with the target host.  Must be one of "
+    $ECHO "          'ssh'      over ssh transport"
+    $ECHO "          'rsync'    native rsync (when an rsync server can be contacted directly)"
+    $ECHO "          'tunnel'   over an ssh port-forwarded tunnel"
+    $ECHO "   -s   The module that should be backed up.  Defaults to all modules if omitted."
+    $ECHO "   -y   Mark the backup as yearly"
+    $ECHO "   -m   Mark the backup as monthly"
+    $ECHO "   -w   Mark the backup as weekly"
+    $ECHO "   -d   Mark the backup as daily"
+    $ECHO "   -x   Mark the backup as extra and exclude from default retention pruning"
+    $ECHO "   -p   Pruning counts to use.  Defaults to \"$RETENSION\" if unspecified."
+    $ECHO "          eg. \"2,3,4,5\" if backup completes without errors ..."
+    $ECHO "              delete yearly  backups older than the most recent 2 yearly  backups and"
+    $ECHO "              delete monthly backups older than the most recent 3 monthly backups and"
+    $ECHO "              delete weekly  backups older than the most recent 4 weekly  backups and"
+    $ECHO "              delete daily   backups older than the most recent 5 daily   backups"
+    $ECHO "          eg. \"2,3\" if backup completes without errors ..."
+    $ECHO "              delete yearly  backups older than the most recent 2 yearly  backups and"
+    $ECHO "              delete monthly backups older than the most recent 3 monthly backups and"
+    $ECHO "              delete weekly  backups older than the most recent default number of weekly backups and"
+    $ECHO "              delete daily   backups older than the most recent default numbre of daily  backups"
+    $ECHO "          eg. \",,4,5\" if backup completes without errors ..."
+    $ECHO "              delete yearly  backups older than the most recent default number of yearly  backups"
+    $ECHO "              delete monthly backups older than the most recent default number of monthly backups"
+    $ECHO "              delete weekly  backups older than the most recent 4 weekly backups and"
+    $ECHO "              delete daily   backups older than the most recent 5 daily  backups"
+    $ECHO "          eg. \"0,,4,5\" if backup completes without errors ..."
+    $ECHO "              same as previous example but yearly backups are not pruned"
+    $ECHO "          eg. \"0,0,0,0,30\" if backup completes without errors ..."
+    $ECHO "              yearly,monthly,weekly, and daily backups will not be pruned and"
+    $ECHO "              delete extra backups older than the most recent 30 extra backups"
+    $ECHO "   -j   path to the jobFile which called this script. Used when enqueue (-q)"
+    $ECHO "        is specified to enqueue the original job with module specific (-s)"
+    $ECHO "        parameters and as part of the status filename and contents."
+    $ECHO "   -q   if no module is explicitly set on the command line (-s option) then for each module"
+    $ECHO "        enqueue the calling (original) job once for each module and appending to the command"
+    $ECHO "        line the source module option (-s <moduleName>)"
+    $ECHO "   -D   print debugging output"
+    $ECHO
+    $ECHO "   Status files will only be created for jobs (ie. this script was invoked wtih the"
+    $ECHO "       -j option)"
+    $ECHO
+    $ECHO "   If none of -y, -m, -w, -d, or -x are specified -d then"
+    $ECHO "       if it's Dec 31st then -y is assumed"
+    $ECHO "       else if its the last day of the month then -m is assumed"
+    $ECHO "       else if its Saturday then -w is assumed"
+    $ECHO "       else -d is assumed"
+    $ECHO
+    $ECHO "   Depending on the type of transport used the following environment variables"
+    $ECHO "   can be set to override default behaviour"
+    $ECHO '       SSH_HOST    default: hostname supplied as -h'
+    $ECHO '       SSH_OPTS    default: "-l backupGT"'
+    $ECHO '       RSYNC_HOST  default: hostname supplied as -h'
+    $ECHO '       RSYNC_OPTS  default: "-vi"'
+
+    exit 1
+}
+
+
+printMiniUsage() {
+    $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <jobPath>] [-q] [-D]"
+}
+
+
+checkRunningUser () {
+    local opt
+    case $SYSTEM_TYPE in
+        linux) opt="-c" ;;
+        bsd)   opt="-f" ;;
+    esac
+
+    if [ `$STAT $opt %u -L $0` -ne `$ID -u` ]; then
+        $ECHO "Error: $0 can only be run by its owner (`$STAT $opt %U -L $0`)."
+        exit 1
+    fi
+
+    USER_NUM=`$ID -nu`
+    GROUP_NUM=`$ID -ng`
+}
+
+
+global_vars () {  #those that need to be reset for each module
+    SRC_NAME= 
+    TANSPORT=
+    DEBUG=
+
+    local date=`$DATE_CMD | $CUT -d '-' -f 1`
+    CUR_YEAR=` $ECHO $date | $CUT -d '.' -f 1`
+    CUR_MONTH=`$ECHO $date | $CUT -d '.' -f 2`
+    CUR_DAY=`  $ECHO $date | $CUT -d '.' -f 3`
+}
+
+
+parseOptions() {
+    global_vars
+    RETENSION_TYPE=
+    RETAIN_YEARLY=` $ECHO $RETENSION | $CUT -d ',' -f 1`
+    RETAIN_MONTHLY=`$ECHO $RETENSION | $CUT -d ',' -f 2`
+    RETAIN_WEEKLY=` $ECHO $RETENSION | $CUT -d ',' -f 3`
+    RETAIN_DAILY=`  $ECHO $RETENSION | $CUT -d ',' -f 4`
+    RETAIN_EXTRA=`  $ECHO $RETENSION | $CUT -d ',' -f 5`
+
+    while getopts ":h:t:s:ymwdxp:j:qD" arg; do
+        case $arg in
+            h)
+                SRC_NAME="${OPTARG}"
+                ;;
+    
+            t)
+                local val=`$ECHO ${OPTARG} | $SED -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'`
+                case $val in
+                    rsync)  TRANSPORT=$val ;;
+                    tunnel) TRANSPORT=$val ;;
+                    ssh)    TRANSPORT=$val ;;
+                    *)      $ECHO "Invalid type of transport: $TRANSPORT" 1>&2
+                            printMiniUsage 1>&2
+                            exit 1
+                            ;;
+                esac
+                ;;
+    
+            s)
+                MODULE="${OPTARG}"
+                ;;
+    
+            y|m|w|d|x)
+                if [ "$RETENSION_TYPE" ]; then
+                    printMiniUsage 1>&2
+                    $ECHO "Only one of -y, -m, -w, -d, or -x can be specified." 1>&2
+                    exit 1
+                fi
+                RETENSION_TYPE=`$ECHO $arg | $SED -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
+                ;;
+    
+            p)
+                local val
+                local pos
+                for pos in `$SEQ 5`; do
+                                    val=`$ECHO ${OPTARG}  | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
+                    [ ! "$val" ] && val=`$ECHO $RETENSION | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
+                    case $pos in
+                        1) RETAIN_YEARLY=$val ;;
+                        2) RETAIN_MONTHLY=$val ;;
+                        3) RETAIN_WEEKLY=$val ;;
+                        4) RETAIN_DAILY=$val ;;
+                        5) RETAIN_EXTRA=$val ;;
+                    esac
+                 done
+                ;;
+
+            j)
+                JOB_PATH=`$READLINK -f "${OPTARG}"`
+                if [ ! -f "$JOB_PATH" ]; then
+                    $ECHO "job path $JOB_PATH is not accessible" 1>&2
+                    printMiniUsage 1>&2
+                    exit 1
+                elif [ ! -x "$JOB_PATH" ]; then
+                    $ECHO "job path $JOB_PATH is not executable" 1>&2
+                    printMiniUsage 1>&2
+                    exit 1
+                fi
+                ;;
+
+            q)
+                ENQUEUE=1
+                ;;
+
+            D)
+                # increase the debug level for each -D option specified
+                DEBUG=$(( DEBUG + 1 ))
+                ;;
+    
+            :)
+                $ECHO "Option -${OPTARG} requires an argument." 1>&2
+                printMiniUsage 1>&2
+                exit 1
+                ;;
+
+            *)
+                $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
+                printFullUsage 1>&2
+                exit 1
+                ;;
+        esac
+    done
+
+    if [ $# -eq 0 ]; then
+        printFullUsage 1>&2
+        exit 1
+    fi
+
+    if [ ! "$SRC_NAME" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Hostname (-h) option must be specified." 1>&2
+        exit 1
+    fi
+
+    if [ ! "$TRANSPORT" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Transport (-t) option must be specified." 1>&2
+        exit 1
+    fi
+
+    if [ ! "$RETENSION_TYPE" ]; then
+        case $SYSTEM_TYPE in
+            linux)
+                local daysInMonth=`$DATE -d "$CUR_MONTH/01/$CUR_YEAR +1month -1day" +%d`
+                local dayOfWeek=`  $DATE -d "$CUR_MONTH/$CUR_DAY/$CUR_YEAR" +%a`
+                ;;
+            bsd)
+                local daysInMonth=`$DATE -v${CUR_YEAR}y -v${CUR_MONTH}m -v1d -v+1m -v-1d +%d`
+                local dayOfWeek=`  $DATE -v${CUR_YEAR}y -v${CUR_MONTH}m -v${CUR_DAY}d +%a`
+                ;;
+        esac
+
+        if [ $CUR_MONTH -eq 12 -a $CUR_DAY -eq 31 ]; then
+            RETENSION_TYPE='Y'
+        elif [ $CUR_DAY -eq $daysInMonth ]; then
+            RETENSION_TYPE='M'
+        elif [ $dayOfWeek = "Sat" ]; then
+            RETENSION_TYPE='W'
+        else
+            RETENSION_TYPE='D'
+        fi
+    fi
+ 
+    if [ "$DEBUG" ]; then
+        $PRINTF 'debug: SRC_NAME       = "%s"\n' $SRC_NAME        1>&2
+        $PRINTF 'debug: MODULE         = "%s"\n' $MODULE          1>&2
+        $PRINTF 'debug: RETENSION_TYPE = "%s"\n' $RETENSION_TYPE  1>&2
+        $PRINTF 'debug: RETAIN_YEARLY  = "%s"\n' $RETAIN_YEARLY   1>&2
+        $PRINTF 'debug: RETAIN_MONTHLY = "%s"\n' $RETAIN_MONTHLY  1>&2
+        $PRINTF 'debug: RETAIN_WEEKLY  = "%s"\n' $RETAIN_WEEKLY   1>&2
+        $PRINTF 'debug: RETAIN_DAILY   = "%s"\n' $RETAIN_DAILY    1>&2
+        $PRINTF 'debug: RETAIN_EXTRA   = "%s"\n' $RETAIN_EXTRA    1>&2
+    fi
+}
+
+
+defaultEnvironment() {
+    SSH_HOST=${SSH_HOST:-$SRC_NAME}
+    SSH_OPTS=${SSH_OPTS:-"-l backupGT"}
+    RSYNC_HOST=${RSYNC_HOST:-$SRC_NAME}
+    RSYNC_OPTS=${RSYNC_OPTS:-"-vi"}
+}
+
+
+parseAssignment() {
+    # find a variable assignment string and return the value assigned to the specified variable
+    # assumes an input string of the form 
+    #     var_1=val_1  var_2=val_2 ...
+    var=$1
+    $AWK '{ print $0 }' RS=' ' | $GREP "${var}=" | $AWK '{ print substr($0, index($0, "=")+1) }'
+}
+
+
+getModuleList () {
+    # obtain complete list of modules from target
+    case "$TRANSPORT" in
+        tunnel)
+            tunnel_create
+            #todo: test if this words 
+            ;&
+        rsync)
+            [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
+                                  $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
+            ;;
+        ssh)
+            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	module=$MODULE" 1>&2
+                                  $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	module=$MODULE"
+            ;;
+    esac
+}
+
+
+###############################################################################
+# backup modules (all or 1) for a particular host
+###############################################################################
+doList () {
+    $ECHO 
+    $ECHO 
+    $ECHO  "Begin processing of $SRC_NAME"
+    $ECHO  "    using transport type: $TRANSPORT" 
+
+    local mods=`getModuleList`
+    $ECHO "    available modules are"
+    $ECHO "$mods" | while read mod; do
+        $PRINTF "    %s\n" "$mod"
+    done 
+    $PRINTF "\n"
+
+    local modName
+    local modComment
+    local auto
+    local singleMod="$MODULE"    #if -s option specified then MODULE will be set
+    $ECHO "$mods" | while read modName modComment; do
+        #WARNING:  this loop is reading from stdin so any contained command that reads stdin will cause problems
+ 
+        #catch the case where a single module has been specified
+        if [ "$singleMod" ]; then    
+            if [ x"$singleMod" = x"${modName}" ]; then
+                $ECHO "Starting specified module: $MODULE" 
+                doModule "$modComment"
+                $PRINTF "\n\n\n"
+                break
+            fi
+            continue
+
+        else  #process all modules
+            auto=`$ECHO $modComment | parseAssignment auto`
+            if [ "$auto" = "true" ]; then
+                if [ "$ENQUEUE" ]; then 
+                    $ECHO "enqueuing module	$modName" 
+                    `$DIRNAME "${COMMAND_PATH}"`/enqueue  \
+                        "$JOB_PATH"                       \
+                        "${COMMAND_PARMS[@]}"             \
+                        "-s" "${modName}"
+                else
+                    MODULE="${modName}"
+                    $ECHO "Starting listed (auto=true) module: $MODULE" 
+                    doModule "$modComment"  </dev/null  #note: the stdin redirect is to shield it from the remote end
+                    $PRINTF "\n\n\n"
+                fi
+            fi
+        fi
+    done 
+    $PRINTF "\n"
+}
+
+
+###############################################################################
+# make a backup of a single target
+###############################################################################
+doModule () {
+    local modComment="$*"
+    local method=`$ECHO $modComment | parseAssignment method`
+    case "$method" in 
+        rsync) ;&
+        tar)
+            doModule_file "$*"
+            ;;
+        zfs)   ;&
+        zfs.rsync)
+            doModule_zfs "$*"
+            ;;
+    esac
+}
+
+doModule_file () {
+    local modComment="$*"
+    local method=`$ECHO $modComment | parseAssignment method`
+
+    local timeStamp=`$DATE_CMD`
+    local elapsedStart=`$ELAPSED_CMD`
+
+    # if we are providing secondary backup services to a primary then the modComment
+    # will have the origHost, origMod, and origName set
+    local origHost=`      $ECHO $modComment | parseAssignment "origHost"`
+    local origMod=`       $ECHO $modComment | parseAssignment "origMod"`
+    local origName=`      $ECHO $modComment | parseAssignment "origName"`
+
+    local useHost=${origHost:-$SRC_NAME}
+    local useMod=${origMod:-$MODULE}
+    [ "$DEBUG" ] && $PRINTF 'debug: usrHost  = "%s"\n' $useHost         1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: userMod  = "%s"\n' $useMod          1>&2
+
+    local hostDir=${STORAGE_ROOT}/${useHost}
+    local modDir=${hostDir}/${useMod}
+    local baseName=${modDir}/${useMod}
+    local targetKeySpec=`$ECHO $modComment | parseAssignment "key"`
+
+    [ "$DEBUG" ] && $PRINTF 'debug: hostDir  = "%s"\n' $hostDir         1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: modDir   = "%s"\n' $modDir          1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: baseName = "%s"\n' $baseName        1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: keySpec  = "%s"\n' $targetKeySpec  1>&2
+
+    # define the new and working dir 
+    local newDir=${baseName}_${timeStamp}_${RETENSION_TYPE}
+    if [ -n "$origName" ]; then
+        newDir=${modDir}/${origName}
+    fi
+    local newLog=${newDir}.log
+    [ "$DEBUG" ] && $PRINTF 'debug: newDir = "%s"\n' $newDir  1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: newLog = "%s"\n' $newLog  1>&2
+
+    local workDir=${baseName}_WIP
+    local workLog=${workDir}.log
+    [ "$DEBUG" ] && $PRINTF 'debug: workDir  = "%s"\n' $workDir  1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: workLog  = "%s"\n' $workLog  1>&2
+
+    if [ -d "$newDir" ]; then
+        { $ECHO "---------------"
+          $ECHO "Backup skipped:"
+          $ECHO "    Target provided an original name that should be used for this backup"
+          $ECHO "    instance of the module, however, a backup with this name alreay exists"
+          $ECHO "---------------"
+          $ECHO ""
+        } | $TEE -a $workLog
+        return
+    fi
+
+    # make sure that the modDir exists
+    if [ ! -d "$modDir" ]; then    
+        if [ "$CREATE_NEW_DIRS_AS_ZFS_VOL" = "yes" ]; then
+            $SUDO $ZFS create -p -o mountpoint=$modDir $STORAGE_DS/$useHost/$useMod
+        else
+            $MKDIR -p -m 750 $workDir
+        fi
+    fi
+    $SUDO $CHOWN $USER_NUM:$GROUP_NUM $modDir
+    $ECHO -n "" >> $workLog
+
+    # find the most recent dir, if this is the first time then create a seed directory
+    local seedDir=`$LS -d ${baseName}_[0-9]*_[YMWDX] 2>/dev/null | $TAIL -1`
+    if [ ! "$seedDir" ]; then
+        seedDir=${baseName}_00000000
+        $MKDIR -p ${seedDir}
+    fi
+    [ "$DEBUG" ] && $PRINTF 'debug: seedDir = "%s"\n' $seedDir  1>&2
+
+    { $ECHO "=============================================================================="
+      $ECHO "= Backup started for $SRC_NAME/$MODULE at $timeStamp"
+      $ECHO "=============================================================================="
+      $ECHO "Using method: $method"
+    } | $TEE -a $workLog 
+    $ECHO "WIP log: $workLog"
+
+    local rc=1
+    case $method.$TRANSPORT in 
+        rsync.rsync | rsync.tunnel)
+            [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
+		$SUDO $RSYNC -a $RSYNC_OPTS  
+		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    ${RSYNC_HOST}::${MODULE} ${workDir}/
+		__CMD__
+
+            $CAT <<-__CMD__                  >> $workLog 
+		$SUDO $RSYNC -a $RSYNC_OPTS  
+		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    ${RSYNC_HOST}::${MODULE} ${workDir}/
+		__CMD__
+
+            $SUDO $RSYNC -a $RSYNC_OPTS                                                                          \
+                --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                ${RSYNC_HOST}::${MODULE} ${workDir}/                                                          \
+                >> $workLog 2>&1
+            rc=$?
+            ;;
+
+        rsync.ssh)    
+            if [ ! "$targetKeySpec" ]; then
+                local sshOpts=$SSH_OPTS
+            else
+                local sshOpts=`$ECHO $SSH_OPTS | $SED "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
+            fi
+
+            [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
+		$SUDO $RSYNC -a $RSYNC_OPTS  
+		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"  
+		    ${SSH_HOST}::${MODULE} ${workDir}
+		__CMD__
+
+            $CAT <<-__CMD__                  >> $workLog 
+		$SUDO $RSYNC -a $RSYNC_OPTS  
+		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"  
+		    ${SSH_HOST}::${MODULE} ${workDir}
+		__CMD__
+
+            $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
+                --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"        \
+                ${SSH_HOST}::${MODULE} ${workDir}                                                             \
+                >> $workLog 2>&1
+            rc=$?
+            ;;
+
+        tar.ssh)    
+            if [ ! "$targetKeySpec" ]; then
+                local sshOpts=$SSH_OPTS
+            else
+                local sshOpts=`$ECHO $SSH_OPTS | $SED "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
+            fi
+
+            [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
+		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} 
+		    dummyCommand_to_inform_ssh_that_there_is_no_tty
+		    | $TAR xvf - -C ${workDir} 
+		__CMD__
+
+            $CAT <<-__CMD__                  >> $workLog 
+		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}
+		    dummyCommand_to_inform_ssh_that_there_is_no_tty
+		    | $TAR xvf - -C ${workDir} 
+		__CMD__
+
+            $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}  \
+                dummyCommand_to_inform_ssh_that_there_is_no_tty                                        \
+                | $TAR xvf - -C ${workDir}                                                             \
+                >> $workLog 2>&1
+            rc=$?
+            ;;
+    esac
+    $ECHO "Done" | $TEE -a $workLog 
+
+    #cleanup any temporary seed directory
+    $SUDO $RM -rf ${baseName}_00000000
+
+    local elapsedEnd=`$ELAPSED_CMD`
+    local elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
+    local dryRun=`$ECHO ${RSYNC_OPTS} | $GREP -c dry-run`
+    if [ "$dryRun" -ne 0 ]; then
+        $ECHO dry run cleanup
+        $SUDO $RM -rf ${workDir}
+        #$SUDO $RM -rf ${workLog}
+    else
+        case ${method}.${rc} in
+            rsync.0 | rsync.23 | rsync.24 | tar.0 )
+                {
+                    $ECHO "==============================================================================" 
+                    $ECHO "= Backup for $SRC_NAME/$MODULE completed successfully at `$DATE_CMD`"
+                    $ECHO "=     return code = $rc"
+                    [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rc`"
+                    $ECHO "=     duration = $elapsedMin minutes"
+                    $ECHO "=============================================================================="
+                } | $TEE -a $workLog 
+
+                # mv the work dir to permanent name
+                $MV ${workDir} ${newDir}
+                $MV ${workLog} ${newLog}
+                #$CHMOD 750 ${newDir}
+                $ECHO "Saved WIP log as: $newLog"
+
+                # setup convenient symlinks to the newly completed backup
+                $SUDO $RM -f ${modDir}/current
+                $LN -s `${newDir##*/}` ${modDir}/current
+
+                # generate stats file
+                case ${method} in
+                    rsync)
+                        {
+                            local tail99="`$TAIL -99 $newLog`"
+                            local stat_fileSent=`$ECHO "$tail99" \
+                                                   | $GREP "Number of files transferred:" \
+                                                   | $AWK '{print $5}' `
+                            local stat_fileNum=`$ECHO "$tail99" \
+                                                   | $GREP "Number of files:" \
+                                                   | $AWK '{print $4}' `
+                            local stat_sizeSent=`$ECHO "$tail99" \
+                                                   | $GREP "Total transferred file size:" \
+                                                   | $AWK '{print $5}' `
+                            local stat_sizeTot=`$ECHO "$tail99" \
+                                                   | $GREP "Total file size:" \
+                                                   | $AWK '{print $4}' `
+                            local stat_listSize=`$ECHO "$tail99" \
+                                                   | $GREP "File list size:" \
+                                                   | $AWK '{print $4}' `
+                            local stat_listGenTime=`$ECHO "$tail99" \
+                                                   | $GREP "File list generation time:" \
+                                                   | $AWK '{print $5}' \
+                                                   | $CUT -d '.' -f 1 `
+                            $PRINTF "%s [%s] [%s] [%s] [%s] [%s] %s/%s\n" \
+                                       $timeStamp \
+                                       "`$PRINTF 'files: %d/%d'    $stat_fileSent $stat_fileNum `" \
+                                       "`$PRINTF 'MBytes: %d/%d'   $(( stat_sizeSent / 1048576 )) $(( stat_sizeTot / 1048576 )) `" \
+                                       "`$PRINTF 'listGen: %d'     $(( stat_listGenTime / 60 )) `" \
+                                       "`$PRINTF 'totTime: %d'     $elapsedMin `" \
+                                       "`$PRINTF 'rc: %d'          $rc `" \
+                                       $SRC_NAME $MODULE
+                        } >> ${modDir}/stats
+                        ;;
+
+                    tar)
+                        {
+                            $PRINTF "%s [%s] [%s] [%s] [%s] %s/%s\n" \
+                                       $timeStamp \
+                                       "`$PRINTF 'files: %d'       $( $GREP '^x ' ${newLog} | wc -l ) `" \
+                                       "`$PRINTF 'size: %s'        $( $DU -sh ${newDir} | $AWK '{print $1}' ) `" \
+                                       "`$PRINTF 'totTime: %d'     $elapsedMin `" \
+                                       "`$PRINTF 'rc: %d'          $rc `" \
+                                       $SRC_NAME $MODULE
+                        } >> ${modDir}/stats
+                        ;;
+                esac
+                writeStatus 0 "$MODULE" "${newLog}" "${modDir}/stats" "$timeStamp" "$elapsedMin"
+    
+                # prune old backups
+                {
+                    $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
+                    elapsedStart=`$ELAPSED_CMD`
+                    pruneOldBackups
+                    elapsedEnd=`$ELAPSED_CMD`
+                    elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
+                    $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
+                    $ECHO "  duration = $elapsedMin minutes"
+                } | $TEE -a $newLog
+                ;;
+
+            *)
+                {
+                    $ECHO "=============================================================================="
+                    $ECHO "= Backup for $SRC_NAME/$MODULE exited with error $rc at `$DATE_CMD`"
+                    $ECHO "=     return code = $rc"
+                    [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rc`"
+                    $ECHO "=     duration = $elapsedMin minutes"
+                    $ECHO "= WIP log left at: $workLog"
+                    $ECHO "=============================================================================="
+                    $ECHO "pruning aborted due to previous errors"
+                } | $TEE -a $workLog 1>&2
+
+                # generate stats file
+                {
+                    $PRINTF "%s  FAILED  [%s] [%s] %s/%s\n" \
+                               $timeStamp \
+                               "`$PRINTF 'rc: %d'          $rc `" \
+                               "`$PRINTF 'totTime: %d min' $elapsedMin `" \
+                               $SRC_NAME $MODULE
+                } >> ${modDir}/stats
+                writeStatus "$rc" "$MODULE" "${workLog}" "${modDir}/stats" "$timeStamp" "$elapsedMin"
+                ;;
+        esac
+    fi
+}
+
+doModule_zfs () {
+    local modComment="$*"
+
+    # ensure that tmporary dataset exists
+    if [ -z "`$ZFS list -o name | grep $TMP_VOL`" ] ; then
+        $SUDO $ZFS create -o quota=$TMP_VOL_MAX_SIZE $TMP_VOL
+    fi
+    if [ -n "$TMP_VOL_MAX_SIZE" ] ; then
+        $SUDO $ZFS set quota=$TMP_VOL_MAX_SIZE $TMP_VOL
+    fi
+    TMP_DIR="`$ZFS list -H -r -o mountpoint $TMP_VOL`"
+    $SUDO $CHOWN $USER_NUM:$GROUP_NUM $TMP_DIR
+
+    local workLog=${LOG_ROOT}/${MODULE}.log
+    doModule_zfs2 "$*" 2>&1 | $TEE -a $workLog
+}
+
+doModule_zfs2 () {
+    local modComment="$*"
+    local method=` $ECHO $modComment | parseAssignment method`
+    local relVol=` $ECHO $modComment | parseAssignment relVol`
+
+    local dataset=${STORAGE_DS}/${relVol}
+    local timeStamp=`$DATE_CMD`
+    local elapsedStart=`$ELAPSED_CMD`
+    local workDir=${TMP_DIR}
+    local workLog=${LOG_ROOT}/${MODULE}.log
+
+    [ "$DEBUG" ] && $PRINTF 'debug: dataset  = "%s"\n' "$dataset"
+
+    $ECHO "=============================================================================="
+    $ECHO "= Backup started for $MODULE at $timeStamp"
+    $ECHO "=============================================================================="
+    $ECHO "Using method: $method"
+    $ECHO "WIP log:      $workLog"
+
+    # detmine the last snapshot and make sure the target dataset exists
+    if $ZFS list -o name | $GREP -q "$dataset" ; then
+        lastSnap=`$ZFS list -H -o name -t snapshot -d 1 -s name "$dataset" | $TAIL -1 | $CUT -d '@' -f 2`
+        $ECHO lastSnap: $lastSnap
+    else
+        $ECHO -n "$dataset" does not exist on this system. Creating...
+        $SUDO $ZFS create -p "$dataset"
+        $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$ZFS list -H -r -o mountpoint $dataset`
+        $ECHO    " done."
+        lastSnap=""
+    fi
+
+    $ECHO "beginning transfer"
+    case $method in
+        zfs)
+            [ "$DEBUG" ] && $CAT <<-__CMD__
+		$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap
+		    | $SUDO $ZFS receive -vuF "$dataset"
+		__CMD__
+        
+            $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap  \
+                | $SUDO $ZFS receive -vuF "$dataset" 
+            rc=$?
+            ;;
+
+        zfs.rsync)
+            [ "$DEBUG" ] && $CAT <<-__CMD__
+		$SUDO $RSYNC $RSYNC_OPTS  
+		    --partial  --stats  --progress  --numeric-ids --inplace
+		    -e "$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"
+		    ${SSH_HOST}::${MODULE}/${MODULE}.snapExport.gz ${workDir}
+		__CMD__
+        
+            $SUDO $RSYNC $RSYNC_OPTS                                                                                       \
+                --partial  --stats  --progress  --numeric-ids --inplace                                                    \
+                -e "$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"  \
+                ${SSH_HOST}::${MODULE}/${MODULE}.snapExport.gz ${workDir}
+            rc=$?
+        
+            local dryRun=`$ECHO ${RSYNC_OPTS} | $GREP -c dry-run`
+            if [ "$dryRun" -ne 0 ]; then
+                $ECHO dry run complete
+                return
+            fi
+            ;;
+    esac
+        
+    local elapsedEnd=`$ELAPSED_CMD`
+    local elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
+    case ${method}.${rc} in
+        zfs.rsync.[1-9]* )
+            $ECHO "=============================================================================="
+            $ECHO " transfer of snapshot export for moudle $MODULE failed at `$DATE_CMD`"
+            $ECHO "     return code = $rc"
+            $ECHO "     description = `rsyncErrorCode $rc`"
+            $ECHO "     duration = $elapsedMin minutes"
+            $ECHO "=============================================================================="
+            ;;
+    
+        zfs.rsync.0 )
+            $ECHO "=============================================================================="
+            $ECHO " transfer of snapshot export for moudle $MODULE completed successfully at `$DATE_CMD`"
+            $ECHO "     return code = $rc"
+            $ECHO "     description = `rsyncErrorCode $rc`"
+            $ECHO "     duration = $elapsedMin minutes"
+            $ECHO "=============================================================================="
+    
+            elapsedStart=`$ELAPSED_CMD`
+            gzcat ${workDir}/${MODULE}.snapExport.gz | $SUDO $ZFS receive -vuF "$dataset"
+            rc=$?
+            elapsedEnd=`$ELAPSED_CMD`
+            elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
+            ;&
+
+         zfs.* )
+            $ECHO "=============================================================================="
+            if [ $rc -eq 0 ]; then
+                $ECHO "= import of snapshot for module $MODULE completed successfully at `$DATE_CMD`"
+            else
+                $ECHO "= import of snapshot for module $MODULE failed at `$DATE_CMD`"
+                $ECHO "=    return code = $rc"
+                $ECHO "=    log left at: $workLog"
+            fi
+            $ECHO "     duration = $elapsedMin minutes"
+            $ECHO "=============================================================================="
+            ;;
+    esac
+    writeStatus "$rc" "$MODULE" "${workLog}" "" "$timeStamp" "$elapsedMin"
+}
+
+
+writeStatus () {
+    local rc="$1"
+    local modName=$2
+    local logFile="$3"
+    local statFile="$4"     #may be blank if no stats file available
+    local timeStamp="$5"
+    local elapsedMin="$6"
+
+    # only create a status file if this script was called with the '-j' option
+    [ -z "$JOB_PATH" ] && return
+
+    local statusBaseName=${JOB_PATH}_${modName}_
+    local pad=`$ECHO ${statusBaseName##*/} | $AWK '{print substr("________________________________________",1,40-length($1))}'`
+
+    local status=
+    if [ $rc -eq 0 ]; then    
+        $RM -f ${statusBaseName}*
+        status=SUCCESS
+    else
+        $RM -f ${statusBaseName}*FAILURE
+        status=FAILURE
+    fi 
+
+    {
+        $ECHO "# jobName:  ${JOB_PATH##*/}"
+        $ECHO "# modName:  $modName"
+        $ECHO "# rc:       $rc"
+        $ECHO "# duration: $elapsedMin"
+        $ECHO "# logFile:  $logFile"
+        $ECHO "# statFile: $statFile"
+        $ECHO 
+        $ECHO "$JOB_PATH"
+        for p in "${COMMAND_PARMS[@]}"; do
+            $ECHO "$p";
+        done
+    } > ${statusBaseName}_${pad}${timeStamp}_${status}
+}
+
+
+###############################################################################
+# tunnel management
+###############################################################################
+tunnel_create () {
+    trap tunnel_destroy 0 1 2 3 4 15
+    $ECHO "creating tunnel..." 1>&2
+    $ECHO ssh $SSH_OPTS 
+    $SSH $SSH_OPTS &
+    tunnelPid=$!
+    $SLEEP 5
+    $ECHO " done" 1>&2
+}
+
+tunnel_destroy () {
+    if [ ! "$tunnelPid" ]; then
+        $ECHO -n "destroying tunnel..." 1>&2
+        $KILL $tunnelPid
+        $ECHO " done" 1>&2
+    fi
+}
+
+
+
+
+###############################################################################
+# routines for pruning backups
+###############################################################################
+pruneOldBackups () {
+    local hostDir=${STORAGE_ROOT}/${SRC_NAME}
+    local modDir=${hostDir}/${MODULE}
+    local baseName=${modDir}/${MODULE}
+
+    local retainAmt
+    local sedPattern
+    case $RETENSION_TYPE in
+        Y) retainAmt=${RETAIN_YEARLY}  ;;
+        M) retainAmt=${RETAIN_MONTHLY} ;;
+        W) retainAmt=${RETAIN_WEEKLY}  ;;
+        D) retainAmt=${RETAIN_DAILY}   ;;
+        X) retainAmt=${RETAIN_EXTRA}   ;;
+    esac
+    if [ "$retainAmt" -gt 0 ]; then
+        sedPattern="1,${retainAmt}d"
+        [ "$DEBUG" ] && $PRINTF 'debug: pruning %s=%s\n' $RETENSION_TYPE $retainAmt 1>&2
+        [ "$DEBUG" ] && $PRINTF 'debug: sed pattern: %s\n' $sedPattern 1>&2 
+    else
+        [ "$DEBUG" ] && $ECHO "retension amount is 0 so pruning will be skipped"
+        return
+    fi
+
+    for dir in `$LS -dr ${baseName}*_${RETENSION_TYPE} 2>/dev/null | $SED "$sedPattern"`; do
+        $ECHO "  pruning $dir"
+        $NICE $SUDO $RM -rf $dir
+        $NICE $SUDO $RM -rf $dir.log
+    done
+}
+
+
+
+###############################################################################
+# misc routines
+###############################################################################
+dumpVars () {
+    local label=$1
+    $ECHO "<><><><><><><<> vars: $label <><><><><><><><><><>"
+    set | $GREP '^[[:alpha:]]*=' 
+    $ECHO "<><><><><><><><><><><><><><><><>><><><><><><><><>"
+}
+
+pctFree () {
+    local dfResult=`df ${STORAGE_ROOT}`
+    local pUsed=`$ECHO ${dfResult[11]} | $SED -e 's/%//'`
+    $ECHO $(( 100 - pUsed ))
+}
+
+dirScan3() {
+    # prints the names of files at the third level down
+    for f0 in *; do      [ ! -d "$f0" ] && continue
+    for f1 in $f0/*; do  [ ! -d "$f1" ] && continue
+    for f2 in $f1/*; do  [   -d "$f2" ] && $ECHO $f2
+    done
+    done
+    done
+}
+
+rsyncErrorCode () {
+    case $1 in
+        0) $ECHO 'Success' ;;
+        1) $ECHO 'Syntax or usage error' ;;
+        2) $ECHO 'Protocol incompatibility' ;;
+        3) $ECHO 'Errors selecting input/output files, dirs' ;;
+        4) $ECHO 'Requested action not supported: an attempt was made to manipulate 64-bit files on a platform that cannot support them; or an option was specified that is supported by the client and not by the server.'  ;;
+        5) $ECHO 'Error starting client-server protocol' ;;
+        6) $ECHO 'Daemon unable to append to log-file' ;;
+        10) $ECHO 'Error in socket I/O' ;;
+        11) $ECHO 'Error in file I/O' ;;
+        12) $ECHO 'Error in rsync protocol data stream' ;;
+        13) $ECHO 'Errors with program diagnostics' ;;
+        14) $ECHO 'Error in IPC code' ;;
+        20) $ECHO 'Received SIGUSR1 or SIGINT' ;;
+        21) $ECHO 'Some error returned by CWwaitpid\(\)' ;;
+        22) $ECHO 'Error allocating core memory buffers' ;;
+        23) $ECHO 'Partial transfer due to error' ;;
+        24) $ECHO 'Partial transfer due to vanished source files' ;;
+        25) $ECHO 'The --max-delete limit stopped deletions' ;;
+        30) $ECHO 'Timeout in data send/receive' ;;
+        35) $ECHO 'Timeout waiting for daemon connection' ;;
+    esac
+}
+
+
+###############################################################################
+# main
+###############################################################################
+COMMAND_PATH=`$READLINK -f "$0"`
+COMMAND_PARMS=( "$@" )
+
+case ${0##*/} in      #see how we are called
+    backupGT.server)
+	checkRunningUser
+	parseOptions "$@"
+	defaultEnvironment
+        doList 
+        ;;
+esac
+

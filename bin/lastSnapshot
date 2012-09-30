@@ -1,0 +1,26 @@
+#! /usr/local/bin/bash
+
+
+###############################################################################
+# get user definced globals
+###############################################################################
+. ${0%/*}/backupGT.conf
+
+
+###############################################################################
+# routines for showing the last snapshot for each ZFS dataset
+###############################################################################
+for v in `$ZFS list -Hr -o name $STORAGE_DS`; do
+    lastSnap=`$ZFS list -Ht snapshot -r -o name,used,refer $v | $TAIL -1` 
+    if [ -z "$lastSnap" ]; then
+         snapName='--'
+         used='--'
+         refer='--'
+    else
+        snapName=`$ECHO $lastSnap | $AWK '{print $1}' | $CUT -d '@' -f 2`
+        used=`$ECHO $lastSnap | $AWK '{print $2}'`
+        refer=`$ECHO $lastSnap | $AWK '{print $3}'`
+    fi
+    $PRINTF "%-50s %-20s\t%s\t%s\n" "$v" "$snapName" "$used" "$refer"
+done
+

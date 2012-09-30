@@ -1,0 +1,112 @@
+#! /usr/local/bin/bash
+
+###############################################################################
+# This script enqueues jobs passed on its command line to one of a number
+# of queues.  The default behaviour is to simply add the job to whichever queue
+# is shortest (basically assuming all queues have similar priority and are being
+# used to load balance amongst a number of queueRunners"
+###############################################################################
+# Queues
+#   Implemented as sibling directories under a QUEUE_ROOT where each queue
+#   directory has a name of the form qN and where N is an arbitrary integer.
+#
+# Queue entries
+#   Are files whose names are the date when they were enqueued and whose
+#   contents are just a stored list of the original job passed on the
+#   command line.
+###############################################################################
+
+###############################################################################
+# get user definced globals
+###############################################################################
+. ${0%/*}/backupGT.conf
+
+# redefine $SUDO to include the configured user
+SUDO=""
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+if
+
+
+###############################################################################
+# globals
+###############################################################################
+LAST_MODIFIED_DATE='2012-06-28'
+
+
+###############################################################################
+# process options
+###############################################################################
+printFullUsage() {
+    $ECHO "###############################################################################"
+    $ECHO "# enqueue (part of the backupGT suite)"
+    $ECHO "# Author: Garry Thuna"
+    $ECHO "# Created: 11/10/2009"
+    $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
+    $ECHO "###############################################################################"
+    $ECHO
+    $ECHO "Usage: $0 <jobName> [<jobParm> [..]]"
+    $ECHO "   jobName: the canonical path to an executable file"
+    $ECHO "   jobParm: the parameters that are to be placed on the command line of"
+    $ECHO "            jobName when jobName is later dequeued and executed"
+    exit 1
+}
+
+
+printMiniUsage() {
+    $ECHO "Usage: $0 <jobName> [<jobParm> [..]]"
+}
+
+
+checkRunningUser () {
+    local opt
+    case $SYSTEM_TYPE in
+        linux) opt="-c" ;;
+        bsd)   opt="-f" ;;
+    esac
+
+    if [ `$STAT $opt %u -L $QUEUE_ROOT` -ne `$ID -u` ]; then
+        $ECHO "Error: $0 can only be run by the queue owner \(`$STAT $opt %U -L $QUEUE_ROOT`\)."
+        exit 1
+    fi
+
+    USER_NUM=`$ID -nu`
+    GROUP_NUM=`$ID -ng`
+}
+
+
+shortestQueue () {
+    $FIND $QUEUE_ROOT                                    \
+         | $GREP "$QUEUE_ROOT/q[0-9]"                    \
+         | $SED "s:^\($QUEUE_ROOT/q[0-9]*\)\(.*\):\1:"   \
+         | $UNIQ -c                                      \
+         | $SORT -n                                      \
+         | $HEAD -1                                      \
+         | $AWK '{ print $2 }'
+}
+
+
+###############################################################################
+# main
+###############################################################################
+COMMAND_PATH=`$READLINK -f "$0"`
+COMMAND_PARMS=( "$@" )
+
+checkRunningUser
+if [ $# -eq 0 ]; then
+    printFullUsage
+fi
+
+# ensure that all queueDirectories exist
+for i in `seq 1 $NUM_QUEUES`; do
+    mkdir -p $QUEUE_ROOT/q$i
+done
+
+# create the queue file and populate
+jobFile=`$MKTEMP $(shortestQueue)/job_$($DATE -u +%Y%m%d_%H%M%Sz)_XXXXX`
+
+echo `$READLINK -f "${COMMAND_PARMS[0]}"` >> $jobFile
+for i in `$SEQ 1 ${#COMMAND_PARMS[@]}`; do
+    echo "${COMMAND_PARMS[$i]}" >> $jobFile
+done
+

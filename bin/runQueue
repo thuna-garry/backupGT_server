@@ -1,0 +1,163 @@
+#! /usr/local/bin/bash
+
+###############################################################################
+# This script finds the job at the head of a queue and runs it.
+#
+###############################################################################
+# Queues
+#   Implemented as sibling directories under a QUEUE_ROOT where each queue
+#   directory has a name of the form qN and where N is an arbitrary integer.
+#
+# Queue entries
+#   Are files whose names are the date when they were enqueued and whose
+#   contents are just a stored list of the original job passed on the
+#   command line.
+###############################################################################
+
+
+###############################################################################
+# get user definced globals
+###############################################################################
+. ${0%/*}/backupGT.conf
+
+# redefine $SUDO to include the configured user
+SUDO=""
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+if
+
+
+###############################################################################
+# globals
+###############################################################################
+LAST_MODIFIED_DATE='2012-06-28'
+
+
+###############################################################################
+# process options
+###############################################################################
+printFullUsage() {
+    $ECHO "###############################################################################"
+    $ECHO "# runQueue (part of the backupGT suite)"
+    $ECHO "# Author: Garry Thuna"
+    $ECHO "# Created: 11/10/2009"
+    $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
+    $ECHO "###############################################################################"
+    $ECHO
+    $ECHO "Usage: $0 [<queueName>]"
+    $ECHO "   queueName: the directory path relative to QUEUE_ROOT"
+    $ECHO "              If queueName is not supplied this script will"
+    $ECHO "              be restarted once for each queue (all such"
+    $ECHO "              instances will be run concurrently)."
+    exit 1
+}
+
+
+printMiniUsage() {
+    $ECHO "Usage: $0 [<queueName>]"
+}
+
+
+checkRunningUser () {
+    local opt
+    case $SYSTEM_TYPE in
+        linux) opt="-c" ;;
+        bsd)   opt="-f" ;;
+    esac
+
+    if [ `$STAT $opt %u -L $QUEUE_ROOT` -ne `$ID -u` ]; then
+        $ECHO "Error: $0 can only be run by the queue owner \(`$STAT $opt %U -L $QUEUE_ROOT`\)."
+        exit 1
+    fi
+
+    USER_NUM=`$ID -nu`
+    GROUP_NUM=`$ID -ng`
+}
+
+
+###############################################################################
+# main
+#   - create a mutex in the queue (mark with a timestamp)
+#   - wait for potential competing instances to create their mutex
+#   - check for the existence of other mutexes in the queue
+#   - if a mutex exists determine the job for which it marks as running
+#       - if the job is still running then cleanup and quit
+#   - remove any stale mutexes from the queue
+#   - read the head of the queue and 
+#       - launch the job to which it refers
+#       - store the process info with the mutex
+#   - wait for the job to complete
+#       - remove the mutex
+###############################################################################
+checkRunningUser
+case "$#" in
+    0) for i in $QUEUE_ROOT/q[1-9]*; do
+           $0 `${i##*/}` &     # re-launch this script for each queue
+       done
+       exit
+       ;;
+
+    1) queueDir="$QUEUE_ROOT/$1"
+       ;;
+
+    *) printFullUsage
+       ;;
+esac
+
+
+# check that the queueDir exists
+if [ ! -d "$queueDir" ]; then
+    $ECHO "$0: ERROR: queue direcotry '$queueDir' does not exist"
+    exit 1
+fi
+
+# create a mutex in the queue (mark with a timestamp
+timeStamp=`$DATE -u +%Y%m%d_%H%M%Sz`
+thisMutex=`$MKTEMP $queueDir/mutex_${timeStamp}_XXXXX`
+$PRINTF "$$" > $thisMutex
+$SLEEP 1
+
+# see if thisMutex is governing
+for mutex in $queueDir/mutex_*; do
+    if [ "$mutex" = $thisMutex ]; then
+        #this mutex is controlling
+        break
+    fi
+    mutexPid=`$CAT $mutex`
+    if $PS -o pid,command -p $mutexPid | $GREP -q "^$mutexPid"; then
+        # job is still running
+        $RM -f $thisMutex
+        exit 0
+    else
+        # job is defunct, remove stale mutex
+        $RM -f $mutex
+    fi
+done
+
+# okay lets get the head of the queue
+jobFile=`ls $queueDir/job_* 2>/dev/null | $HEAD -1`
+if [ ! -f "$jobFile" ]; then
+    $RM -f $thisMutex
+    exit 0
+fi
+
+# read the job file
+numLines=`$CAT $jobFile | wc -l`
+for i in `$SEQ 1 $numLines`; do
+    read line 
+    if `$ECHO $line | $GREP -q '^#'`; then
+        continue
+    fi
+    cmdStr[$i]="$line"
+done < $jobFile
+
+# run job and wait for it to finish
+$ENV_CMD "${cmdStr[@]}" &
+jobPid=$!
+$PRINTF $jobPid > $thisMutex
+wait $jobPid
+
+# dequeue completed job and cleanup
+$RM -f $jobFile
+$RM -f $thisMmutex
+

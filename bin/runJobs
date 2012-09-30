@@ -1,0 +1,136 @@
+#! /usr/local/bin/bash
+
+###############################################################################
+# This script finds jobs that haven't successfully run within a prescribed
+# time interval and queues them for execution
+#
+###############################################################################
+# Jobs
+#   Implemented as runnable files (typically shell scripts) within directories
+#   named as JOBS_ROOT.NNNN where NNNN is the duration in minutes after the
+#   last successful run of the job that the job should be (re)queued for 
+#   execution
+#
+#   Example: if the configuration variable JOB_ROOT is ~/backupGT/jobs/ then
+#   the runJobs script will find directories named ~/backupGT/jobs/jobs.NNNN.
+#   If then, ~/backupGT/jobs/job.14400 exists then for each job file found
+#   directly within ~/backupGT/jobs/job.14400, a check will frequently be made
+#   to see that the job has successfully been run within the last 14400 minutes
+#   (1 day in this example).  
+#  
+# Job Status
+#   The need to re-queue a job (lack of successful completion) is determined as
+#   follows:
+#         - if there is a status file for the job that indicates 
+#           the job did not complete successfully (ie the status file
+#           name will contain the string FAILURE)
+#         - see if there is a status file for the job whose modification
+#           time is older than the prescribed interval
+#         - there are no status files for this job
+# 
+###############################################################################
+
+
+###############################################################################
+# get user definced globals
+###############################################################################
+. ${0%/*}/backupGT.conf
+
+# redefine $SUDO to include the configured user
+SUDO=""
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+if
+
+
+###############################################################################
+# globals
+###############################################################################
+LAST_MODIFIED_DATE='2012-06-28'
+
+
+###############################################################################
+# process options
+###############################################################################
+printFullUsage() {
+    $ECHO "###############################################################################"
+    $ECHO "# runJobs (part of the backupGT suite)"
+    $ECHO "# Author: Garry Thuna"
+    $ECHO "# Created: 11/10/2009"
+    $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
+    $ECHO "###############################################################################"
+    $ECHO
+    $ECHO "Usage: $0"
+    $ECHO "   search the JOB_ROOT for job files that have not successfully completed"
+    $ECHO "   within the last NNNN minutes.  NNNN is determined by the name of the "
+    $ECHO "   directory (which must be job.NNNN) in which the job file is found."
+    exit 1
+}
+
+
+printMiniUsage() {
+    $ECHO "Usage: $0"
+}
+
+
+checkRunningUser () {
+    local opt
+    case $SYSTEM_TYPE in
+        linux) opt="-c" ;;
+        bsd)   opt="-f" ;;
+    esac
+
+    if [ `$STAT $opt %u -L $QUEUE_ROOT` -ne `$ID -u` ]; then
+        $ECHO "Error: $0 can only be run by the queue owner \(`$STAT $opt %U -L $QUEUE_ROOT`\)."
+        exit 1
+    fi
+
+    USER_NUM=`$ID -nu`
+    GROUP_NUM=`$ID -ng`
+}
+
+
+###############################################################################
+# main
+###############################################################################
+COMMAND_PATH=`$READLINK -f "$0"`
+COMMAND_PARMS=( "$@" )
+
+checkRunningUser
+case "$#" in
+    0) ;;
+    *) printFullUsage ;;
+esac
+
+for jobDir in `$FIND $JOB_ROOT -name 'jobs.[0-9]*' -mindepth 1 -maxDepth 1`; do   # all the job directories with time periods 
+    for jobPath in `$FIND $jobDir -perm -100 -type f -mindepth 1 -maxdepth 1`; do   # all the jobs in the current job directory
+        for statusFile in "${jobPath}_*{FAILURE,SUCCESS}"; do                         # all the status files for current job file
+
+            modName=`$AWK '/^# modName/ {print $3}' "${jobPath}/${statusFile}"`
+
+            case "${statusFile##*_}" in
+                FAILURE)
+                    "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-s" "$modName"
+                    ;;
+
+                SUCCESS)
+                    # don't need to consider age if there is also a FAILURE status file
+                    [ -f ${jobPath}_*FAILURE ] && continue
+
+                    interval=`$ECHO ${jobDir} | $SED 's/.*\.//'`
+                    case $SYSTEM_TYPE in
+                        bsd)   op="-ctime"; opArg="-${interval}m" ;;
+                        linux) op="-mmin";  opArg="-${interval}"  ;;
+                    esac
+                    if $FIND "${jobPath}*SUCCESS" -maxdepth 1 -mindepth 1 $op $opArg; then
+                        continue  #there is a sufficiently recent SUCCESS status file
+                    fi
+    
+                    # else need to enqueue it
+                    "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-s" "$modName"
+                    ;;
+            esac
+        done
+    done
+done 
+
