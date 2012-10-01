@@ -610,7 +610,7 @@ doModule_file () {
 
     # make sure that the modDir exists
     if [ ! -d "$modDir" ]; then    
-        if [ "$CREATE_NEW_DIRS_AS_ZFS_DS" = "yes" ]; then
+        if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
             $SUDO $ZFS create -p -o mountpoint=$modDir $STORAGE_DS/$useHost/$useMod
         else
             $MKDIR -p -m 750 $workDir

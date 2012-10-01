@@ -17,14 +17,14 @@ hostType=zfs.rsync.ssh
 targetHost=207.54.125.212
 targetPort=2201
 targetTag=b1pf
-targetKey="`cat ${userDir}/jobs/backup1.yyc.knockKey`"
+targetKey="`cat ${bgtDir}/jobs/backup1.yyc.knockKey`"
 knock () {
-    echo "$targetKey" | ${userDir}/bin/knock_keyViaStdin $targetHost $targetTag
+    echo "$targetKey" | ${bgtDir}/bin/knock_keyViaStdin $targetHost $targetTag
 }
 
 #export SSH_HOST="${targetHost}.planetFoods.ca"
 export SSH_HOST="${targetHost}"
-export SSH_OPTS="-p $targetPort -l root -i ${userDir}/keys/backupGT.key"
+export SSH_OPTS="-p $targetPort -l root -i ${bgtDir}/keys/backupGT.key"
 
 export RSYNC_HOST=$SSH_HOST
 export RSYNC_OPTS="-vi"

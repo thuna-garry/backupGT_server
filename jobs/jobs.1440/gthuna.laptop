@@ -18,7 +18,7 @@ targetHost=$hostName
 targetPort=22
 
 export SSH_HOST="$targetHost"
-export SSH_OPTS="-p $targetPort -l root -i ${userDir}/keys/backupGT.key"
+export SSH_OPTS="-p $targetPort -l AvmaxBackupService -i ${bgtDir}/keys/backupGT.key"
 
 export RSYNC_HOST=$SSH_HOST
 export RSYNC_OPTS="-vi"
