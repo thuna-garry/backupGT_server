@@ -2,18 +2,30 @@
 
 ###############################################################################
 # This script enqueues jobs passed on its command line to one of a number
-# of queues.  The default behaviour is to simply add the job to whichever queue
-# is shortest (basically assuming all queues have similar priority and are being
-# used to load balance amongst a number of queueRunners"
+# of queues.  The default behaviour is to simply add the job to whichever
+# queue is shortest (basically assuming all queues have similar priority and
+# are being used to load balance amongst a number of queueRunners).
+#
+# Each job file's name includes a timestamp of when the job was queued and
+# a checksum of it's contents.  The date is used to establish a simple FIFO
+# ordering of jobs within each queue.  The checksum is used to prevent jobs
+# from being queued multiple times (before a job is enqueued all queues are 
+# searched for any job whose file name has the same checksum)
 ###############################################################################
 # Queues
 #   Implemented as sibling directories under a QUEUE_ROOT where each queue
 #   directory has a name of the form qN and where N is an arbitrary integer.
 #
 # Queue entries
-#   Are files whose names are the date when they were enqueued and whose
-#   contents are just a stored list of the original job passed on the
-#   command line.
+#   Are files with names of the form  "job_yyyymmdd_hhmmssz_<crc32>" and 
+#   which have as their first line of content the full path name of the job
+#   executable to run, followed by a line for each parameter to place on the
+#   command line when the job is run.
+###############################################################################
+# Modified enqueue to chack for duplicate jobs before adding a job into the
+# execution queue.  This is done by making a checksum as part of the queued
+# file's name, and searching the queues for any file with an identical
+# checksum
 ###############################################################################
 
 ###############################################################################
@@ -25,7 +37,7 @@
 SUDO=""
 if [ -n "$SUDO_USER" ]; then
     SUDO="$SUDO -u $SUDO_USER"
-if
+fi
 
 
 ###############################################################################
@@ -102,11 +114,21 @@ for i in `seq 1 $NUM_QUEUES`; do
     mkdir -p $QUEUE_ROOT/q$i
 done
 
-# create the queue file and populate
-jobFile=`$MKTEMP $(shortestQueue)/job_$($DATE -u +%Y%m%d_%H%M%Sz)_XXXXX`
+# create a candidate queue file and populate
+jobFile=`$MKTEMP $(shortestQueue)/tmp_XXXXX`
 
 echo `$READLINK -f "${COMMAND_PARMS[0]}"` >> $jobFile
 for i in `$SEQ 1 ${#COMMAND_PARMS[@]}`; do
     echo "${COMMAND_PARMS[$i]}" >> $jobFile
 done
+
+# check that the candidate file is not a duplicate of an already queued job
+hash=`cksum $jobFile | sed 's/^\([[:alnum:]]*\).*/\1/'`
+isDup=`find $QUEUE_ROOT -type f -name \*$hash\*`
+if [ -z "$isDup" ]; then
+    mv $jobFile  $(shortestQueue)/job_$($DATE -u +%Y%m%d_%H%M%Sz)_$hash
+else
+echo its a dup
+    rm -f $jobFile
+fi
 

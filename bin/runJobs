@@ -40,7 +40,7 @@
 SUDO=""
 if [ -n "$SUDO_USER" ]; then
     SUDO="$SUDO -u $SUDO_USER"
-if
+fi
 
 
 ###############################################################################
@@ -66,6 +66,7 @@ printFullUsage() {
     $ECHO "   directory (which must be job.NNNN) in which the job file is found."
     exit 1
 }
+
 
 
 printMiniUsage() {
@@ -102,13 +103,13 @@ case "$#" in
     *) printFullUsage ;;
 esac
 
-for jobDir in `$FIND $JOB_ROOT -name 'jobs.[0-9]*' -mindepth 1 -maxDepth 1`; do   # all the job directories with time periods 
-    for jobPath in `$FIND $jobDir -perm -100 -type f -mindepth 1 -maxdepth 1`; do   # all the jobs in the current job directory
-        for statusFile in "${jobPath}_*{FAILURE,SUCCESS}"; do                         # all the status files for current job file
+for jobDir in `$FIND $JOB_ROOT -name 'jobs.[0-9]*' -mindepth 1 -maxdepth 1`; do   # all the job directories with time periods 
+    for jobPath in `$FIND $jobDir -perm -0100 -type f -mindepth 1 -maxdepth 1`; do   # all the jobs in the current job directory
+        for statusPath in `find ${jobDir} -name ${jobPath##*/}'*_FAILURE' -o -name ${jobPath##*/}'*_SUCCESS'`; do 
 
-            modName=`$AWK '/^# modName/ {print $3}' "${jobPath}/${statusFile}"`
+            modName=`$AWK '/^# modName:/ {print $3}' "${statusPath}"`
 
-            case "${statusFile##*_}" in
+            case "${statusPath##*_}" in
                 FAILURE)
                     "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-s" "$modName"
                     ;;
@@ -133,4 +134,5 @@ for jobDir in `$FIND $JOB_ROOT -name 'jobs.[0-9]*' -mindepth 1 -maxDepth 1`; do 
         done
     done
 done 
+
 
