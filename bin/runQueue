@@ -93,7 +93,7 @@ checkRunningUser () {
 checkRunningUser
 case "$#" in
     0) for i in $QUEUE_ROOT/q[1-9]*; do
-           $0 `${i##*/}` &     # re-launch this script for each queue
+           $0 ${i##*/} &     # re-launch this script for each queue
        done
        exit
        ;;
@@ -104,7 +104,6 @@ case "$#" in
     *) printFullUsage
        ;;
 esac
-
 
 # check that the queueDir exists
 if [ ! -d "$queueDir" ]; then
