@@ -26,12 +26,16 @@
 # execution queue.  This is done by making a checksum as part of the queued
 # file's name, and searching the queues for any file with an identical
 # checksum
+#
+# return code:  0     success
+#               1     error
+#               100   job already queued - enqueue cancelled
 ###############################################################################
 
 ###############################################################################
 # get user defined globals
 ###############################################################################
-. ${0%/*}/server.conf
+. ${0%/*}/../etc/server.conf
 
 # redefine $SUDO to include the configured user
 SUDO=""
@@ -104,7 +108,6 @@ shortestQueue () {
 COMMAND_PATH=`$READLINK -f "$0"`
 COMMAND_PARMS=( "$@" )
 
-checkRunningUser
 if [ $# -eq 0 ]; then
     printFullUsage
 fi
@@ -128,7 +131,9 @@ isDup=`find $QUEUE_ROOT -type f -name \*$hash\*`
 if [ -z "$isDup" ]; then
     mv $jobFile  $(shortestQueue)/job_$($DATE -u +%Y%m%d_%H%M%Sz)_$hash
 else
-echo its a dup
+    #echo "Job already queued ($1) - ${0##*/} cancelled."
     rm -f $jobFile
+    rm -f $QUEUE_ROOT/q*/tmp_*    #also fix any aborted cleanups
+    exit 100
 fi
 

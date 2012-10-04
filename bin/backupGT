@@ -172,7 +172,7 @@
 ###############################################################################
 # get user defined globals
 ###############################################################################
-. ${0%/*}/server.conf
+. ${0%/*}/../etc/server.conf
 
 # redefine $SUDO to include the configured user
 SUDO=""
@@ -860,7 +860,11 @@ doModule_zfs2 () {
     local workDir=${TMP_DIR}
     local workLog=${LOG_ROOT}/${MODULE}.log
 
-    [ "$DEBUG" ] && $PRINTF 'debug: dataset  = "%s"\n' "$dataset"
+    [ "$DEBUG" ] && $PRINTF 'debug: method   = "%s"\n' $method      1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: relDS    = "%s"\n' $relDS       1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: dataset  = "%s"\n' $dataset     1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: workDir  = "%s"\n' $workDir     1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: workLog  = "%s"\n' $workLog     1>&2
 
     $ECHO "=============================================================================="
     $ECHO "= Backup started for $MODULE at $timeStamp"
@@ -1116,7 +1120,7 @@ COMMAND_PATH=`$READLINK -f "$0"`
 COMMAND_PARMS=( "$@" )
 
 case ${0##*/} in      #see how we are called
-    backupGT.server)
+    backupGT)
 	checkRunningUser
 	parseOptions "$@"
 	defaultEnvironment

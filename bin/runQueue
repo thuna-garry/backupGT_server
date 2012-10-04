@@ -9,16 +9,17 @@
 #   directory has a name of the form qN and where N is an arbitrary integer.
 #
 # Queue entries
-#   Are files whose names are the date when they were enqueued and whose
-#   contents are just a stored list of the original job passed on the
-#   command line.
+#   Are files with names of the form  "job_yyyymmdd_hhmmssz_<crc32>" and
+#   which have as their first line of content the full path name of the job
+#   executable to run, followed by a line for each parameter to place on the
+#   command line when the job is run.
 ###############################################################################
 
 
 ###############################################################################
 # get user defined globals
 ###############################################################################
-. ${0%/*}/server.conf
+. ${0%/*}/../etc/server.conf
 
 # redefine $SUDO to include the configured user
 SUDO=""

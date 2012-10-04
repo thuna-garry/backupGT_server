@@ -24,5 +24,5 @@ export RSYNC_HOST=$SSH_HOST
 export RSYNC_OPTS="-vi"
 
 # do the backup
-backupGT.server -j "$jobFile" -h $hostName -t $hostType $* 
+backupGT -j "$jobFile" -h $hostName -t $hostType $* 
 
