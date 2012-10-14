@@ -170,9 +170,10 @@
 
 
 ###############################################################################
-# get user defined globals
+# include user defined globals and the common library
 ###############################################################################
 . ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
 SUDO=""
@@ -241,8 +242,8 @@ printFullUsage() {
     $ECHO "        is specified to enqueue the original job with module specific (-s)"
     $ECHO "        parameters and as part of the status filename and contents."
     $ECHO "   -q   if no module is explicitly set on the command line (-s option) then for each module"
-    $ECHO "        enqueue the calling (original) job once for each module and appending to the command"
-    $ECHO "        line the source module option (-s <moduleName>)"
+    $ECHO "        reported from the target_host enqueue the calling (original) job and append to the"
+    $ECHO "        command line the the specific target module name (-s <moduleName>)"
     $ECHO "   -D   print debugging output"
     $ECHO
     $ECHO "   Status files will only be created for jobs (ie. this script was invoked wtih the"
@@ -268,23 +269,6 @@ printFullUsage() {
 printMiniUsage() {
     $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
     $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <jobPath>] [-q] [-D]"
-}
-
-
-checkRunningUser () {
-    local opt
-    case $SYSTEM_TYPE in
-        linux) opt="-c" ;;
-        bsd)   opt="-f" ;;
-    esac
-
-    if [ `$STAT $opt %u -L $0` -ne `$ID -u` ]; then
-        $ECHO "Error: $0 can only be run by its owner (`$STAT $opt %U -L $0`)."
-        exit 1
-    fi
-
-    USER_NUM=`$ID -nu`
-    GROUP_NUM=`$ID -ng`
 }
 
 
@@ -454,15 +438,6 @@ defaultEnvironment() {
 }
 
 
-parseAssignment() {
-    # find a variable assignment string and return the value assigned to the specified variable
-    # assumes an input string of the form 
-    #     var_1=val_1  var_2=val_2 ...
-    var=$1
-    $AWK '{ print $0 }' RS=' ' | $GREP "${var}=" | $AWK '{ print substr($0, index($0, "=")+1) }'
-}
-
-
 getModuleList () {
     # obtain complete list of modules from target
     case "$TRANSPORT" in
@@ -475,8 +450,8 @@ getModuleList () {
                                   $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
             ;;
         ssh)
-            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	module=$MODULE" 1>&2
-                                  $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	module=$MODULE"
+            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	$MODULE" 1>&2
+                                  $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	$MODULE"
             ;;
     esac
 }
@@ -888,11 +863,11 @@ doModule_zfs2 () {
     case $method in
         zfs)
             [ "$DEBUG" ] && $CAT <<-__CMD__
-		$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap
+		$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"
 		    | $SUDO $ZFS receive -vuF "$dataset"
 		__CMD__
         
-            $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap  \
+            $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"  \
                 | $SUDO $ZFS receive -vuF "$dataset" 
             rc=$?
             ;;
@@ -974,15 +949,16 @@ writeStatus () {
     # only create a status file if this script was called with the '-j' option
     [ -z "$JOB_PATH" ] && return
 
-    local statusBaseName=${JOB_PATH}_${modName}_
-    local pad=`$ECHO ${statusBaseName##*/} | $AWK '{print substr("________________________________________",1,40-length($1))}'`
+    local statusDir=${JOB_PATH}${JOB_STATUS_DIR_SUFFIX}
+    local pad=`$ECHO $modName | $AWK '{print substr("________________________________________",1,40-length($1))}'`
+    $MKDIR -p $statusDir
 
     local status=
     if [ $rc -eq 0 ]; then    
-        $RM -f ${statusBaseName}*
+        $RM -f ${statusDir}/${modName}_*
         status=SUCCESS
     else
-        $RM -f ${statusBaseName}*FAILURE
+        $RM -f ${statusDir}/${modName}_*FAILURE
         status=FAILURE
     fi 
 
@@ -998,7 +974,7 @@ writeStatus () {
         for p in "${COMMAND_PARMS[@]}"; do
             $ECHO "$p";
         done
-    } > ${statusBaseName}_${pad}${timeStamp}_${status}
+    } > ${statusDir}/${modName}_${pad}_$(timeStamp}_${status}
 }
 
 

@@ -126,9 +126,12 @@ for i in `$SEQ 1 ${#COMMAND_PARMS[@]}`; do
     echo "${COMMAND_PARMS[$i]}" >> $jobFile
 done
 
+echo ">>>> parms " ${COMMAND_PARMS[@]}
 # check that the candidate file is not a duplicate of an already queued job
 hash=`cksum $jobFile | sed 's/^\([[:alnum:]]*\).*/\1/'`
+echo ">>>> hash " $hash
 isDup=`find $QUEUE_ROOT -type f -name \*$hash\*`
+echo ">>>> isDup " $isDup
 if [ -z "$isDup" ]; then
     mv $jobFile  $(shortestQueue)/job_$($DATE -u +%Y%m%d_%H%M%Sz)_$hash
 else

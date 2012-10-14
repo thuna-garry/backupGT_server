@@ -5,6 +5,7 @@
 # time interval and queues them for execution
 #
 ###############################################################################
+# todo: rewrite these descriptions
 # Jobs
 #   Implemented as runnable files (typically shell scripts) within directories
 #   named as JOB_ROOT.NNNN where NNNN is the duration in minutes after the
@@ -32,9 +33,10 @@
 
 
 ###############################################################################
-# get user defined globals
+# include user defined globals and the common library
 ###############################################################################
 . ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
 SUDO=""
@@ -70,26 +72,8 @@ printFullUsage() {
 }
 
 
-
 printMiniUsage() {
     $ECHO "Usage: $0 [-v]"
-}
-
-
-checkRunningUser () {
-    local opt
-    case $SYSTEM_TYPE in
-        linux) opt="-c" ;;
-        bsd)   opt="-f" ;;
-    esac
-
-    if [ `$STAT $opt %u -L $QUEUE_ROOT` -ne `$ID -u` ]; then
-        $ECHO "Error: $0 can only be run by the queue owner \(`$STAT $opt %U -L $QUEUE_ROOT`\)."
-        exit 1
-    fi
-
-    USER_NUM=`$ID -nu`
-    GROUP_NUM=`$ID -ng`
 }
 
 
@@ -110,47 +94,79 @@ while getopts ":v" arg; do
     esac
 done
 
-for jobDir in `$FIND $JOB_ROOT -name 'jobs.[0-9]*' -mindepth 1 -maxdepth 1`; do   # all the job directories with time periods 
+for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job directories with a JOB_CONTROL file
+    jobDir=${jobControlFile%/*}
+    [ "$VERBOSE" ] && echo "job dir: $jobDir"
+
+    JOB_INTERVAL=1440     #set default 1 day
+    JOB_RETRY_FAILED=60   #set default 1 hour
+    . $jobControlFile
+
     for jobPath in `$FIND $jobDir -perm -0100 -type f -mindepth 1 -maxdepth 1`; do   # all the jobs in the current job directory
-        for statusPath in `find ${jobDir} -name ${jobPath##*/}'*_FAILURE' -o -name ${jobPath##*/}'*_SUCCESS'`; do 
+        jobFile=${jobPath##*/}
+        [ "$VERBOSE" ] && echo "    job: $jobFile"
 
-            modName=`$AWK '/^# modName:/ {print $3}' "${statusPath}"`
-            [ "$VERBOSE" ] && echo -n  job=$jobPath module=$modName '... '
+        # if a custom job control file exists then source it
+        [ -f "${jobPath}${JOB_CONTROL}" ] && . "${jobPath}${JOB_CONTROL}"
 
-            case "${statusPath##*_}" in
-                FAILURE)
-                    "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-s" "$modName"
-                    if [ $? -eq 100 ]; then
-                        [ "$VERBOSE" ] && echo 'attempted enqueue (failure status file found) but job already queued'
+        #----------------
+        # consider the job file itself
+        #----------------
+        case $SYSTEM_TYPE in
+            bsd)   findOp="-ctime -${JOB_INTERVAL}m" ;;
+            linux) findOp="-mmin  -${JOB_INTERVAL}"  ;;
+        esac
+	recentModList="`$FIND ${jobDir} -name ${JOB_MODLIST_PREFIX}${jobFile} $findOp 2>/dev/null`"
+        if [ -z "$recentModList" ]; then
+            [ "$VERBOSE" ] && echo "        ENQUEING (modlist missing or older than $JOB_INTERVAL min)"
+#todo purge queues of any instances of this job
+            ${COMMAND_PATH%/*}/enqueue "$jobPath" "-j" "$jobPath" "-q"
+            continue
+        fi
+        
+        #----------------
+        # now consider the modules
+        #----------------
+        $CAT $recentModList | while read modName modComment; do
+            [ "$VERBOSE" ] && echo '        mod: ' $modName
+            statusEntry=`grep "^$modName" "${jobDir}/${JOB_STATUS_PREFIX}${jobFile}" 2>/dev/null`
+            curState=`            echo "$statusEntry" | parseAssignment curState`
+            lastSuccessTimeStamp=`echo "$statusEntry" | parseAssignment lastSuccessTimeStamp`
+            lastFailureTimeStamp=`echo "$statusEntry" | parseAssignment lastFailureTimeStamp`
+         
+            
+            case x$curState in
+                xSUCCESS)
+                    maxAge=`$EXPR $JOB_INTERVAL \* 60`
+		    needToQueue=`isTimeStampTooOld ${lastSuccessTimeStamp:-1} $maxAge`
+                    if [ $needToQueue ]; then
+                        [ "$VERBOSE" ] && echo "            ENQUEUE: curState=$curState too old ($JOB_INTERVAL max age)"
                     else
-                        [ "$VERBOSE" ] && echo 'ENQUEUED (failure status file found)'
+                        [ "$VERBOSE" ] && echo "            curState=$curState sufficiently recent ($JOB_INTERVAL max age)"
                     fi
                     ;;
-
-                SUCCESS)
-                    # don't need to consider age if there is also a FAILURE status file
-                    [ -f ${jobPath}_*FAILURE ] && continue
-
-                    interval=`$ECHO ${jobDir} | $SED 's/.*\.//'`
-                    case $SYSTEM_TYPE in
-                        bsd)   op="-ctime"; opArg="-${interval}m" ;;
-                        linux) op="-mmin";  opArg="-${interval}"  ;;
-                    esac
-                    if $FIND "${jobPath}*SUCCESS" -maxdepth 1 -mindepth 1 $op $opArg; then
-                        [ "$VERBOSE" ] && echo 'skipped (recent success status file found)'
-                        continue  #there is a sufficiently recent SUCCESS status file
-                    fi
-    
-                    # else need to enqueue it
-                    "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-s" "$modName"
-                    [ "$VERBOSE" ] && echo 'ENQUEUED (last success too old)'
-                    if [ $? -eq 100 ]; then
-                        [ "$VERBOSE" ] && echo 'attempted enqueue (last success too old) but job already queued'
+                xFAILURE)
+                    maxAge=`$EXPR $JOB_RETRY_FAILED \* 60`
+		    needToQueue=`isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge`
+                    if [ $needToQueue ]; then
+                        [ "$VERBOSE" ] && echo "            ENQUEUE: curState=$curState wait period $JOB_RETRY_FAILED expired"
                     else
-                        [ "$VERBOSE" ] && echo 'ENQUEUED (last success too old)'
+                        [ "$VERBOSE" ] && echo "            curState=$curState too recent (wait $JOB_RETRY_FAILED before retry)"
                     fi
+                    ;;
+                *)
+		    needToQueue=0  #0=true   
+                    [ "$VERBOSE" ] && echo "            ENQUEUE: no prior state"
                     ;;
             esac
+        
+            if [ $needToQueue ]; then
+                "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-j" "$jobPath" "-s" "$modName"
+                if [ $? -eq 100 ]; then
+                    [ "$VERBOSE" ] && echo '            attempted enqueue but job already queued'
+                fi
+            fi
+
         done
     done
 done 

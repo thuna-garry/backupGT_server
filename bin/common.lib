@@ -1,0 +1,91 @@
+################################################################################
+# shared application globals
+################################################################################
+
+# The names of specific status files
+JOB_MODLIST_PREFIX=".modList."
+JOB_STATUS_PREFIX=".history."
+
+# The names of specific status files
+JOB_STATUS_VAR="_status"
+
+
+################################################################################
+# shared shell functions
+################################################################################
+
+parseAssignment() {
+    #-------------
+    # find a variable assignment in a string (stdin) and return the value
+    # assigned to the specified variable assuming an input string of the form
+    #     var_1=val_1  var_2=val_2 ...
+    #-------------
+
+    local var=$1
+
+    #awk method (not always available in restricted environments)
+    #$AWK '{ print $0 }' RS=' ' | $GREP "${var}=" \
+    #    | $AWK '{ print substr($0, index($0, "=")+1) }'
+
+    #sed method: first delete any lines not containing $var, then get the value
+    $SED -e "/${var}/!d" \
+         -e "s/^.*${var}=\([^[:space:]]*\).*/\1/"
+}
+
+
+makeAssignment() {
+    #-------------
+    # set a variable assignment in a string (stdin) to the specified variable
+    # assuming an input string of the form
+    #     var_1=val_1  var_2=val_2 ...
+    #-------------
+
+    local var=$1
+    local value=$2
+
+    #first delete any occurance of the variable $var, then append assignment
+    $SED -e "s/${var}=[^[:space:]]*//" \
+         -e "s/$/ ${var}=${value}/"
+}
+
+
+checkRunningUser () {
+    #-------------
+    # ensure that the script is being run by the user who own the script
+    #   if yes: set the USER_NUM and GROUP_NUM global variables
+    #   if no:  print error and exit
+    #-------------
+
+    local opt
+
+    case $SYSTEM_TYPE in
+        linux) opt="-c" ;;
+        bsd)   opt="-f" ;;
+    esac
+
+    if [ `$STAT $opt %u -L $0` -ne `$ID -u` ]; then
+        $ECHO "Error: $0 can only be run by its owner (`$STAT $opt %U -L $0`)."
+        exit 1
+    fi
+
+    USER_NUM=`$ID -nu`
+    GROUP_NUM=`$ID -ng`
+}
+
+
+isTimeStampTooOld () {
+    #-------------
+    # given an event timestamp (in UTC seconds since epoch) determine if it is older
+    # than the specified maxAge
+    #   if yes: set the USER_NUM and GROUP_NUM global variables
+    #   if no:  print error and exit
+    #-------------
+    local eventTs=$1
+    local maxAge=$2
+
+    curTs=`$DATE -u +%s`
+    elapsed=`$EXPR $curTs - $eventTs`
+    [ "$elapsed" -gt "$maxAge" ] && return 0 || return 1
+}
+
+

@@ -1,0 +1,5 @@
+# number of minutes between rescheduling of jobs
+JOB_INTERVAL=60
+
+# nubmer of mintues to wait before rescheduling failed jobs
+JOB_RETRY_FAILED=20
