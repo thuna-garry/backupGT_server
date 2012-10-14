@@ -48,7 +48,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012-06-28'
+LAST_MODIFIED_DATE='2012-10-14'
 
 
 ###############################################################################
@@ -129,10 +129,10 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job d
         #----------------
         $CAT $recentModList | while read modName modComment; do
             [ "$VERBOSE" ] && echo '        mod: ' $modName
-            statusEntry=`grep "^$modName" "${jobDir}/${JOB_STATUS_PREFIX}${jobFile}" 2>/dev/null`
-            curState=`            echo "$statusEntry" | parseAssignment curState`
-            lastSuccessTimeStamp=`echo "$statusEntry" | parseAssignment lastSuccessTimeStamp`
-            lastFailureTimeStamp=`echo "$statusEntry" | parseAssignment lastFailureTimeStamp`
+            modLine=`grep "^$modName	" "${jobDir}/${JOB_STATUS_PREFIX}${jobFile}" 2>/dev/null`
+            curState=`            echo "$modLine" | parseAssignment curState`
+            lastSuccessTimeStamp=`echo "$modLine" | parseAssignment lastSuccessTimeStamp`
+            lastFailureTimeStamp=`echo "$modLine" | parseAssignment lastFailureTimeStamp`
          
             
             case x$curState in

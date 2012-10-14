@@ -114,7 +114,7 @@ if [ $# -eq 0 ]; then
 fi
 
 # ensure that all queueDirectories exist
-for i in `seq 1 $NUM_QUEUES`; do
+for i in `seq 1 $QUEUES_COUNT`; do
     mkdir -p $QUEUE_ROOT/q$i
 done
 

@@ -2,8 +2,14 @@
 # shared application globals
 ################################################################################
 
-# The names of specific status files
 JOB_MODLIST_PREFIX=".modList."
+    # job control .modlist. status variables
+    #   curState               SUCCESS, FAILURE
+    #   lastSuccessTimeStamp   in UTC seconds since epoch
+    #   lastFailureTimeStamp   in UTC seconds since epoch
+    #   lastSuccessDate        in UTC +%Y%m%d_%H%M%S format
+    #   lastFailureDate        in UTC +%Y%m%d_%H%M%S format
+
 JOB_STATUS_PREFIX=".history."
 
 # The names of specific status files
@@ -13,6 +19,21 @@ JOB_STATUS_VAR="_status"
 ################################################################################
 # shared shell functions
 ################################################################################
+timeStamp2Date() {
+    local ts=$1
+    case $SYSTEM_TYPE in
+        linux) $DATE -d  @${ts} +%Y%m%d_%H%M%S ;;
+        bsd)   $DATE -jf %s ${ts} +%Y%m%d_%H%M%S ;;
+    esac
+}
+
+date2timeStamp() {
+    local date=$1
+    case $SYSTEM_TYPE in
+        linux) #todo ;;
+        bsd)   $DATE -jf %Y%m%d_%H%M%S ${date} +%s ;;
+    esac
+}
 
 parseAssignment() {
     #-------------

@@ -2,14 +2,9 @@
 
 ###############################################################################
 # This script finds the job at the head of a queue and runs it.
-#
 ###############################################################################
-# Queues
-#   Implemented as sibling directories under a QUEUE_ROOT where each queue
-#   directory has a name of the form qN and where N is an arbitrary integer.
-#
 # Queue entries
-#   Are files with names of the form  "job_yyyymmdd_hhmmssz_<crc32>" and
+#   Are files with names of the form "qe_pp-timestamp_desc_<crc32>" and
 #   which have as their first line of content the full path name of the job
 #   executable to run, followed by a line for each parameter to place on the
 #   command line when the job is run.
@@ -17,9 +12,10 @@
 
 
 ###############################################################################
-# get user defined globals
+# include user defined globals and the common library
 ###############################################################################
 . ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
 SUDO=""
@@ -31,7 +27,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012-06-28'
+LAST_MODIFIED_DATE='2012-10-14'
 
 
 ###############################################################################
@@ -45,11 +41,12 @@ printFullUsage() {
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
     $ECHO
-    $ECHO "Usage: $0 [<queueName>]"
-    $ECHO "   queueName: the directory path relative to QUEUE_ROOT"
-    $ECHO "              If queueName is not supplied this script will"
-    $ECHO "              be restarted once for each queue (all such"
-    $ECHO "              instances will be run concurrently)."
+    $ECHO "Usage: $0 [<runnerNumber>]"
+    $ECHO "   runnerNumber: a unique id to identify an instance of this script"
+    $ECHO "                 from other instances. runnerNumber will be in the"
+    $ECHO "                 range 1 to QUEUE_RUNNERS"
+    $ECHO "   if called without the runnerNumber parameter then QUEUE_RUNNERS"
+    $ECHO "   instances will be spawned each with a distinct runnerNumber"
     exit 1
 }
 
@@ -59,27 +56,10 @@ printMiniUsage() {
 }
 
 
-checkRunningUser () {
-    local opt
-    case $SYSTEM_TYPE in
-        linux) opt="-c" ;;
-        bsd)   opt="-f" ;;
-    esac
-
-    if [ `$STAT $opt %u -L $QUEUE_ROOT` -ne `$ID -u` ]; then
-        $ECHO "Error: $0 can only be run by the queue owner \(`$STAT $opt %U -L $QUEUE_ROOT`\)."
-        exit 1
-    fi
-
-    USER_NUM=`$ID -nu`
-    GROUP_NUM=`$ID -ng`
-}
-
-
 ###############################################################################
 # main
-#   - create a mutex in the queue (mark with a timestamp)
-#   - wait for potential competing instances to create their mutex
+#   - create a queueRunner specific mutex in the queue (mark with a timestamp)
+#   - wait for potential competing queueRunners to create their mutex
 #   - check for the existence of other mutexes in the queue
 #   - if a mutex exists determine the job for which it marks as running
 #       - if the job is still running then cleanup and quit
@@ -92,18 +72,20 @@ checkRunningUser () {
 ###############################################################################
 checkRunningUser
 case "$#" in
-    0) for i in $QUEUE_ROOT/q[1-9]*; do
-           $0 ${i##*/} &     # re-launch this script for each queue
+    0) for qrNum in `$SEQ $QUEUE_RUNNERS`; do
+           $0 ${qrNum} &    # re-launch this script for each queueRunner
        done
        exit
        ;;
 
-    1) queueDir="$QUEUE_ROOT/$1"
+    1) qrNum="$1"
        ;;
 
     *) printFullUsage
        ;;
 esac
+
+queueDir="$QUEUE_ROOT"
 
 # check that the queueDir exists
 if [ ! -d "$queueDir" ]; then
@@ -112,52 +94,66 @@ if [ ! -d "$queueDir" ]; then
 fi
 
 # create a mutex in the queue (mark with a timestamp
-timeStamp=`$DATE -u +%Y%m%d_%H%M%Sz`
-thisMutex=`$MKTEMP $queueDir/mutex_${timeStamp}_XXXXX`
-$PRINTF "$$" > $thisMutex
+timeStamp=`$DATE -u +%s`
+thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXX`
+$ECHO "$$" > $thisMutex
 $SLEEP 1
 
-# see if thisMutex is governing
-for mutex in $queueDir/mutex_*; do
+# see if thisMutex is governing for this qrNum
+for mutex in $queueDir/mutex_${qrNum}*; do
     if [ "$mutex" = $thisMutex ]; then
         #this mutex is controlling
         break
     fi
     mutexPid=`$CAT $mutex`
     if $PS -o pid,command -p $mutexPid | $GREP -q "^$mutexPid"; then
-        # job is still running
+        # other queueRunner is still running
         $RM -f $thisMutex
         exit 0
     else
-        # job is defunct, remove stale mutex
+        # queueRunner is defunct, remove stale mutex
         $RM -f $mutex
     fi
 done
 
 # okay lets get the head of the queue
-jobFile=`ls $queueDir/job_* 2>/dev/null | $HEAD -1`
-if [ ! -f "$jobFile" ]; then
+queueEntry=`$LS $queueDir/qe_* 2>/dev/null | $HEAD -1`
+if [ -z "$queueEntry" ]; then
+    # no jobs left to run
     $RM -f $thisMutex
     exit 0
 fi
 
-# read the job file
-numLines=`$CAT $jobFile | wc -l`
-for i in `$SEQ 1 $numLines`; do
-    read line 
-    if `$ECHO $line | $GREP -q '^#'`; then
-        continue
-    fi
-    cmdStr[$i]="$line"
-done < $jobFile
+# rename it to ensure that we have exclusive control of the entry
+mxqe="$queueDir/mx_${qrNum}_${queueFile}"
+$MV "$queueDir/$queueFile" "$mxqe" 2>/dev/null
+if [ ! -f "$mxqe" ];
+    # some other queueRunner grabbed the entry before us
+    $RM -f $thisMutex
+    exec $0 $* &    # try again
+fi
 
-# run job and wait for it to finish
-$ENV_CMD "${cmdStr[@]}" &
-jobPid=$!
-$PRINTF $jobPid > $thisMutex
-wait $jobPid
+# so now we have a queue entry lets run it and update the status
+jobDir=` $AWK '/^# jobDir:/  {print $3}' "${mxqe}"`
+jobFile=`$AWK '/^# jobFile:/ {print $3}' "${mxqe}"`
+modName=`$AWK '/^# modName:/ {print $3}' "${mxqe}"`
+$mxqe
+rc=$?
+if [ $? -eq 0 ]; then   #success
+    modLine=`$GREP "^${modName}	" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}`
+    modLine=`$ECHO $modLine | makeAssignment curState SUCCESS`
+    modLine=`$ECHO $modLine | makeAssignment lastSuccessTimeStamp $timeStamp`
+    modLine=`$ECHO $modLine | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)`
+    $SED -i "/^${modName}	/s/.*/${modLine}/" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}
+else #failure
+    modLine=`$GREP "^$modName	" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}`
+    modLine=`$ECHO $modLine | makeAssignment curState SUCCESS`
+    modLine=`$ECHO $modLine | makeAssignment lastFailureTimeStamp $timeStamp`
+    modLine=`$ECHO $modLine | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)`
+    $SED -i "/^${modName}	/s/.*/${modLine}/" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}
+fi
 
 # dequeue completed job and cleanup
-$RM -f $jobFile
+$RM -f $mxqe
 $RM -f $thisMmutex
 
