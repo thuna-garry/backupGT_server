@@ -201,10 +201,9 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO
     $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
-    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <jobPath>] [-q] [-D]"
-    $ECHO "          [-c <duration>]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <modListPath>]"
+    $ECHO "          [-v] [-D]"
     $ECHO "Options:"
     $ECHO "   -h   Hostname for this backup"
     $ECHO "   -t   The transport type to use for communication with the target host.  Must be one of "
@@ -238,16 +237,12 @@ printFullUsage() {
     $ECHO "          eg. \"0,0,0,0,30\" if backup completes without errors ..."
     $ECHO "              yearly,monthly,weekly, and daily backups will not be pruned and"
     $ECHO "              delete extra backups older than the most recent 30 extra backups"
-    $ECHO "   -j   path to the jobFile which called this script. Used when enqueue (-q)"
-    $ECHO "        is specified to enqueue the original job with module specific (-s)"
-    $ECHO "        parameters and as part of the status filename and contents."
-    $ECHO "   -q   if no module is explicitly set on the command line (-s option) then for each module"
-    $ECHO "        reported from the target_host enqueue the calling (original) job and append to the"
-    $ECHO "        command line the the specific target module name (-s <moduleName>)"
-    $ECHO "   -D   print debugging output"
-    $ECHO
-    $ECHO "   Status files will only be created for jobs (ie. this script was invoked wtih the"
-    $ECHO "       -j option)"
+    $ECHO "   -j   Only retrieve the module list and echo it modListPath. This is used when this script"
+    $ECHO "        is being invoked by the backupGT job control system. The output module list will be"
+    $ECHO "        subsequently be used by the job control system to retry the backup of each module"
+    $ECHO "        at regular intervals until it succeeds."
+    $ECHO "   -v   Print verbose output"
+    $ECHO "   -D   Print debugging output"
     $ECHO
     $ECHO "   If none of -y, -m, -w, -d, or -x are specified -d then"
     $ECHO "       if it's Dec 31st then -y is assumed"
@@ -268,7 +263,7 @@ printFullUsage() {
 
 printMiniUsage() {
     $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
-    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <jobPath>] [-q] [-D]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j] [-D]"
 }
 
 
@@ -293,7 +288,7 @@ parseOptions() {
     RETAIN_DAILY=`  $ECHO $RETENSION | $CUT -d ',' -f 4`
     RETAIN_EXTRA=`  $ECHO $RETENSION | $CUT -d ',' -f 5`
 
-    while getopts ":h:t:s:ymwdxp:j:qD" arg; do
+    while getopts ":h:t:s:ymwdxp:j:vD" arg; do
         case $arg in
             h)
                 SRC_NAME="${OPTARG}"
@@ -342,25 +337,17 @@ parseOptions() {
                 ;;
 
             j)
-                JOB_PATH="${OPTARG}"
-                if [ ! -f "$JOB_PATH" ]; then
-                    $ECHO "job path $JOB_PATH is not accessible" 1>&2
-                    printMiniUsage 1>&2
-                    exit 1
-                elif [ ! -x "$JOB_PATH" ]; then
-                    $ECHO "job path $JOB_PATH is not executable" 1>&2
-                    printMiniUsage 1>&2
-                    exit 1
-                fi
-                ;;
-
-            q)
-                ENQUEUE=1
+                JOB_MOD_LIST_PATH="${OPTARG}"
                 ;;
 
             D)
                 # increase the debug level for each -D option specified
                 DEBUG=$(( DEBUG + 1 ))
+                ;;
+
+            v)
+                # increase the verbosity level for each -v option specified
+                VERBOSE=$(( VERBOSE + 1 ))
                 ;;
     
             :)
@@ -376,11 +363,7 @@ parseOptions() {
                 ;;
         esac
     done
-
-    if [ $# -eq 0 ]; then
-        printFullUsage 1>&2
-        exit 1
-    fi
+    shift $(( OPTIND - 1 ))
 
     if [ ! "$SRC_NAME" ]; then
         printMiniUsage 1>&2
@@ -443,7 +426,7 @@ getModuleList () {
     case "$TRANSPORT" in
         tunnel)
             tunnel_create
-            #todo: test if this words 
+            #todo: test if this works 
             ;&
         rsync)
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
@@ -466,13 +449,20 @@ doList () {
     $ECHO  "Begin processing of $SRC_NAME"
     $ECHO  "    using transport type: $TRANSPORT" 
 
-    local mods=`getModuleList`
+    local mods="`getModuleList`"
+
+    if [ -n "$JOB_MOD_LIST_PATH" ]; then
+        $ECHO "$mods" > "$JOB_MOD_LIST_PATH"
+        return 0
+    fi
+
     $ECHO "    available modules are"
     $ECHO "$mods" | while read mod; do
-        $PRINTF "    %s\n" "$mod"
+        $ECHO "    $mod"
     done 
-    $PRINTF "\n"
+    $ECHO
 
+    local rc
     local modName
     local modComment
     local auto
@@ -484,7 +474,8 @@ doList () {
         if [ "$singleMod" ]; then    
             if [ x"$singleMod" = x"${modName}" ]; then
                 $ECHO "Starting specified module: $MODULE" 
-                doModule "$modComment"
+                doModule "$modComment"  </dev/null  #note: the stdin redirect is to shield it from the remote end
+                rc=$?
                 $PRINTF "\n\n\n"
                 break
             fi
@@ -493,22 +484,16 @@ doList () {
         else  #process all modules
             auto=`$ECHO $modComment | parseAssignment auto`
             if [ "$auto" = "true" ]; then
-                if [ "$ENQUEUE" ]; then 
-                    $ECHO "enqueuing module	$modName" 
-                    `$DIRNAME "${COMMAND_PATH}"`/enqueue  \
-                        "$JOB_PATH"                       \
-                        "${COMMAND_PARMS[@]}"             \
-                        "-s" "${modName}"
-                else
-                    MODULE="${modName}"
-                    $ECHO "Starting listed (auto=true) module: $MODULE" 
-                    doModule "$modComment"  </dev/null  #note: the stdin redirect is to shield it from the remote end
-                    $PRINTF "\n\n\n"
-                fi
+                MODULE="${modName}"
+                $ECHO "Starting listed (auto=true) module: $MODULE" 
+                doModule "$modComment"  </dev/null  #note: the stdin redirect is to shield it from the remote end
+                rc=$?
+                $PRINTF "\n\n\n"
             fi
         fi
     done 
-    $PRINTF "\n"
+    $ECHO
+    return $rc
 }
 
 
@@ -516,22 +501,28 @@ doList () {
 # make a backup of a single target
 ###############################################################################
 doModule () {
-    local modComment="$*"
+    local modComment="$@"
     local method=`$ECHO $modComment | parseAssignment method`
+    local rc
     case "$method" in 
-        rsync) ;&
+        rsync)
+            ;&
         tar)
-            doModule_file "$*"
+            doModule_file "$@"
+            rc=$?
             ;;
-        zfs)   ;&
+        zfs)
+            ;&
         zfs.rsync)
-            doModule_zfs "$*"
+            doModule_zfs "$@"
+            rc=$?
             ;;
     esac
+    return $rc
 }
 
 doModule_file () {
-    local modComment="$*"
+    local modComment="$@"
     local method=`$ECHO $modComment | parseAssignment method`
 
     local timeStamp=`$DATE_CMD`
@@ -545,8 +536,8 @@ doModule_file () {
 
     local useHost=${origHost:-$SRC_NAME}
     local useMod=${origMod:-$MODULE}
-    [ "$DEBUG" ] && $PRINTF 'debug: usrHost  = "%s"\n' $useHost         1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: userMod  = "%s"\n' $useMod          1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: useHost  = "%s"\n' $useHost         1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: useMod   = "%s"\n' $useMod          1>&2
 
     local hostDir=${STORAGE_ROOT}/${useHost}
     local modDir=${hostDir}/${useMod}
@@ -556,7 +547,7 @@ doModule_file () {
     [ "$DEBUG" ] && $PRINTF 'debug: hostDir  = "%s"\n' $hostDir         1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: modDir   = "%s"\n' $modDir          1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: baseName = "%s"\n' $baseName        1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: keySpec  = "%s"\n' $targetKeySpec  1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: keySpec  = "%s"\n' $targetKeySpec   1>&2
 
     # define the new and working dir 
     local newDir=${baseName}_${timeStamp}_${RETENSION_TYPE}
@@ -609,7 +600,8 @@ doModule_file () {
     } | $TEE -a $workLog 
     $ECHO "WIP log: $workLog"
 
-    local rc=1
+    local rcDetail  #actual return code from the underlying backup/transfer
+    local rcReturn  #the rc that we are going to return to the caller of this procedure
     case $method.$TRANSPORT in 
         rsync.rsync | rsync.tunnel)
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
@@ -624,11 +616,19 @@ doModule_file () {
 		    ${RSYNC_HOST}::${MODULE} ${workDir}/
 		__CMD__
 
-            $SUDO $RSYNC -a $RSYNC_OPTS                                                                          \
-                --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
-                ${RSYNC_HOST}::${MODULE} ${workDir}/                                                          \
-                >> $workLog 2>&1
-            rc=$?
+            if [ "$VERBOSE" ]; then
+                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
+                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    ${RSYNC_HOST}::${MODULE} ${workDir}/                                                          \
+                    2>&1 | $TEE -a $workLog
+                rcDetail=${PIPESTATUS[0]}
+            else
+                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
+                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    ${RSYNC_HOST}::${MODULE} ${workDir}/                                                          \
+                    >> $workLog 2>&1
+                rcDetail=$?
+            fi
             ;;
 
         rsync.ssh)    
@@ -652,12 +652,21 @@ doModule_file () {
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
-            $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
-                -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"        \
-                ${SSH_HOST}::${MODULE} ${workDir}                                                             \
-                >> $workLog 2>&1
-            rc=$?
+            if [ "$VERBOSE" ]; then
+                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
+                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"    \
+                    ${SSH_HOST}::${MODULE} ${workDir}                                                             \
+                    2>&1 | $TEE -a $workLog
+                rcDetail=${PIPESTATUS[0]}
+            else
+                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
+                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"    \
+                    ${SSH_HOST}::${MODULE} ${workDir}                                                             \
+                    >> $workLog 2>&1
+                rcDetail=$?
+            fi
             ;;
 
         tar.ssh)    
@@ -679,11 +688,19 @@ doModule_file () {
 		    | $TAR xvf - -C ${workDir} 
 		__CMD__
 
-            $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}  \
-                dummyCommand_to_inform_ssh_that_there_is_no_tty                                        \
-                | $TAR xvf - -C ${workDir}                                                             \
-                >> $workLog 2>&1
-            rc=$?
+            if [ "$VERBOSE" ]; then
+                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}      \
+                    dummyCommand_to_inform_ssh_that_there_is_no_tty                                        \
+                    | $TAR xvf - -C ${workDir}                                                             \
+                    2>&1 | $TEE -a $workLog
+                rcDetail=${PIPESTATUS[1]}
+            else
+                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}      \
+                    dummyCommand_to_inform_ssh_that_there_is_no_tty                                        \
+                    | $TAR xvf - -C ${workDir}                                                             \
+                    >> $workLog 2>&1
+                rcDetail=$?
+            fi 
             ;;
     esac
     $ECHO "Done" | $TEE -a $workLog 
@@ -693,122 +710,117 @@ doModule_file () {
 
     local elapsedEnd=`$ELAPSED_CMD`
     local elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
-    local dryRun=`$ECHO ${RSYNC_OPTS} | $GREP -c dry-run`
-    if [ "$dryRun" -ne 0 ]; then
-        $ECHO dry run cleanup
-        $SUDO $RM -rf ${workDir}
-        #$SUDO $RM -rf ${workLog}
-    else
-        case ${method}.${rc} in
-            rsync.0 | rsync.23 | rsync.24 | tar.0 )
-                {
-                    $ECHO "==============================================================================" 
-                    $ECHO "= Backup for $SRC_NAME/$MODULE completed successfully at `$DATE_CMD`"
-                    $ECHO "=     return code = $rc"
-                    [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rc`"
-                    $ECHO "=     duration = $elapsedMin minutes"
-                    $ECHO "=============================================================================="
-                } | $TEE -a $workLog 
+    case ${method}.${rcDetail} in
+        rsync.0 | rsync.23 | rsync.24 | tar.0 )
+            {
+                $ECHO "==============================================================================" 
+                $ECHO "= Backup for $SRC_NAME/$MODULE completed successfully at `$DATE_CMD`"
+                $ECHO "=     return code = $rc"
+                [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rcDetail`"
+                $ECHO "=     duration = $elapsedMin minutes"
+                $ECHO "=============================================================================="
+            } | $TEE -a $workLog 
 
-                # mv the work dir to permanent name
-                $MV ${workDir} ${newDir}
-                $MV ${workLog} ${newLog}
-                #$CHMOD 750 ${newDir}
-                $ECHO "Saved WIP log as: $newLog"
+            # mv the work dir to permanent name
+            $MV ${workDir} ${newDir}
+            $MV ${workLog} ${newLog}
+            #$CHMOD 750 ${newDir}
+            $ECHO "Saved WIP log as: $newLog"
 
-                # setup convenient symlinks to the newly completed backup
-                $SUDO $RM -f ${modDir}/current
-                $LN -s `${newDir##*/}` ${modDir}/current
+            # setup convenient symlinks to the newly completed backup
+            $SUDO $RM -f ${modDir}/current
+            $LN -s `${newDir##*/}` ${modDir}/current
 
-                # generate stats file
-                case ${method} in
-                    rsync)
-                        {
-                            local tail99="`$TAIL -99 $newLog`"
-                            local stat_fileSent=`$ECHO "$tail99" \
-                                                   | $GREP "Number of files transferred:" \
-                                                   | $AWK '{print $5}' `
-                            local stat_fileNum=`$ECHO "$tail99" \
-                                                   | $GREP "Number of files:" \
-                                                   | $AWK '{print $4}' `
-                            local stat_sizeSent=`$ECHO "$tail99" \
-                                                   | $GREP "Total transferred file size:" \
-                                                   | $AWK '{print $5}' `
-                            local stat_sizeTot=`$ECHO "$tail99" \
-                                                   | $GREP "Total file size:" \
-                                                   | $AWK '{print $4}' `
-                            local stat_listSize=`$ECHO "$tail99" \
-                                                   | $GREP "File list size:" \
-                                                   | $AWK '{print $4}' `
-                            local stat_listGenTime=`$ECHO "$tail99" \
-                                                   | $GREP "File list generation time:" \
-                                                   | $AWK '{print $5}' \
-                                                   | $CUT -d '.' -f 1 `
-                            $PRINTF "%s [%s] [%s] [%s] [%s] [%s] %s/%s\n" \
-                                       $timeStamp \
-                                       "`$PRINTF 'files: %d/%d'    $stat_fileSent $stat_fileNum `" \
-                                       "`$PRINTF 'MBytes: %d/%d'   $(( stat_sizeSent / 1048576 )) $(( stat_sizeTot / 1048576 )) `" \
-                                       "`$PRINTF 'listGen: %d'     $(( stat_listGenTime / 60 )) `" \
-                                       "`$PRINTF 'totTime: %d'     $elapsedMin `" \
-                                       "`$PRINTF 'rc: %d'          $rc `" \
-                                       $SRC_NAME $MODULE
-                        } >> ${modDir}/stats
-                        ;;
+            # generate stats file
+            case ${method} in
+                rsync)
+                    {
+                        local tail99="`$TAIL -99 $newLog`"
+                        local stat_fileSent=`$ECHO "$tail99" \
+                                               | $GREP "Number of files transferred:" \
+                                               | $AWK '{print $5}' `
+                        local stat_fileNum=`$ECHO "$tail99" \
+                                               | $GREP "Number of files:" \
+                                               | $AWK '{print $4}' `
+                        local stat_sizeSent=`$ECHO "$tail99" \
+                                               | $GREP "Total transferred file size:" \
+                                               | $AWK '{print $5}' `
+                        local stat_sizeTot=`$ECHO "$tail99" \
+                                               | $GREP "Total file size:" \
+                                               | $AWK '{print $4}' `
+                        local stat_listSize=`$ECHO "$tail99" \
+                                               | $GREP "File list size:" \
+                                               | $AWK '{print $4}' `
+                        local stat_listGenTime=`$ECHO "$tail99" \
+                                               | $GREP "File list generation time:" \
+                                               | $AWK '{print $5}' \
+                                               | $CUT -d '.' -f 1 `
+                        $PRINTF "%s [%s] [%s] [%s] [%s] [%s] %s/%s\n" \
+                                   $timeStamp \
+                                   "`$PRINTF 'files: %d/%d'    $stat_fileSent $stat_fileNum `" \
+                                   "`$PRINTF 'MBytes: %d/%d'   $(( stat_sizeSent / 1048576 )) $(( stat_sizeTot / 1048576 )) `" \
+                                   "`$PRINTF 'listGen: %d'     $(( stat_listGenTime / 60 )) `" \
+                                   "`$PRINTF 'totTime: %d'     $elapsedMin `" \
+                                   "`$PRINTF 'rc: %d'          $rcDetail `" \
+                                   $SRC_NAME $MODULE
+                    } >> ${modDir}/stats
+                    ;;
 
-                    tar)
-                        {
-                            $PRINTF "%s [%s] [%s] [%s] [%s] %s/%s\n" \
-                                       $timeStamp \
-                                       "`$PRINTF 'files: %d'       $( $GREP '^x ' ${newLog} | wc -l ) `" \
-                                       "`$PRINTF 'size: %s'        $( $DU -sh ${newDir} | $AWK '{print $1}' ) `" \
-                                       "`$PRINTF 'totTime: %d'     $elapsedMin `" \
-                                       "`$PRINTF 'rc: %d'          $rc `" \
-                                       $SRC_NAME $MODULE
-                        } >> ${modDir}/stats
-                        ;;
-                esac
-                writeStatus 0 "$MODULE" "${newLog}" "${modDir}/stats" "$timeStamp" "$elapsedMin"
-    
-                # prune old backups
-                {
-                    $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
-                    elapsedStart=`$ELAPSED_CMD`
-                    pruneOldBackups
-                    elapsedEnd=`$ELAPSED_CMD`
-                    elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
-                    $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
-                    $ECHO "  duration = $elapsedMin minutes"
-                } | $TEE -a $newLog
-                ;;
+                tar)
+                    {
+                        $PRINTF "%s [%s] [%s] [%s] [%s] %s/%s\n" \
+                                   $timeStamp \
+                                   "`$PRINTF 'files: %d'       $( $GREP '^x ' ${newLog} | wc -l ) `" \
+                                   "`$PRINTF 'size: %s'        $( $DU -sh ${newDir} | $AWK '{print $1}' ) `" \
+                                   "`$PRINTF 'totTime: %d'     $elapsedMin `" \
+                                   "`$PRINTF 'rc: %d'          $rcDetail `" \
+                                   $SRC_NAME $MODULE
+                    } >> ${modDir}/stats
+                    ;;
+            esac
+            rcReturn=0
 
-            *)
-                {
-                    $ECHO "=============================================================================="
-                    $ECHO "= Backup for $SRC_NAME/$MODULE exited with error $rc at `$DATE_CMD`"
-                    $ECHO "=     return code = $rc"
-                    [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rc`"
-                    $ECHO "=     duration = $elapsedMin minutes"
-                    $ECHO "= WIP log left at: $workLog"
-                    $ECHO "=============================================================================="
-                    $ECHO "pruning aborted due to previous errors"
-                } | $TEE -a $workLog 1>&2
+            # prune old backups
+            {
+                $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
+                elapsedStart=`$ELAPSED_CMD`
+                pruneOldBackups
+                elapsedEnd=`$ELAPSED_CMD`
+                elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
+                $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
+                $ECHO "  duration = $elapsedMin minutes"
+            } | $TEE -a $newLog
+            ;;
 
-                # generate stats file
-                {
-                    $PRINTF "%s  FAILED  [%s] [%s] %s/%s\n" \
-                               $timeStamp \
-                               "`$PRINTF 'rc: %d'          $rc `" \
-                               "`$PRINTF 'totTime: %d min' $elapsedMin `" \
-                               $SRC_NAME $MODULE
-                } >> ${modDir}/stats
-                writeStatus "$rc" "$MODULE" "${workLog}" "${modDir}/stats" "$timeStamp" "$elapsedMin"
-                ;;
-        esac
-    fi
+        *)
+            {
+                $ECHO "=============================================================================="
+                $ECHO "= Backup for $SRC_NAME/$MODULE exited with error $rcDetail at `$DATE_CMD`"
+                $ECHO "=     return code = $rcDetail"
+                [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rcDetail`"
+                $ECHO "=     duration = $elapsedMin minutes"
+                $ECHO "= WIP log left at: $workLog"
+                $ECHO "=============================================================================="
+                $ECHO "pruning aborted due to previous errors"
+            } | $TEE -a $workLog 1>&2
+
+            # generate stats file
+            {
+                $PRINTF "%s  FAILED  [%s] [%s] %s/%s\n" \
+                           $timeStamp \
+                           "`$PRINTF 'rcDetail: %d'          $rcDetail `" \
+                           "`$PRINTF 'totTime: %d min' $elapsedMin `" \
+                           $SRC_NAME $MODULE
+            } >> ${modDir}/stats
+            rcReturn=$rcDetial
+            ;;
+    esac
+    return $rcReturn
 }
 
 doModule_zfs () {
-    local modComment="$*"
+    local modComment="$@"
+    local rc
 
     # ensure that tmporary dataset exists
     if [ -z "`$ZFS list -o name | grep $TMP_DS`" ] ; then
@@ -821,11 +833,12 @@ doModule_zfs () {
     $SUDO $CHOWN $USER_NUM:$GROUP_NUM $TMP_DIR
 
     local workLog=${LOG_ROOT}/${MODULE}.log
-    doModule_zfs2 "$*" 2>&1 | $TEE -a $workLog
+    doModule_zfs2 "$@" 2>&1 | $TEE -a $workLog
+    return ${PIPESTATUS[0]}
 }
 
 doModule_zfs2 () {
-    local modComment="$*"
+    local modComment="$@"
     local method=` $ECHO $modComment | parseAssignment method`
     local relDS=`  $ECHO $modComment | parseAssignment relDS`
 
@@ -860,6 +873,7 @@ doModule_zfs2 () {
     fi
 
     $ECHO "beginning transfer"
+    local rc
     case $method in
         zfs)
             [ "$DEBUG" ] && $CAT <<-__CMD__
@@ -885,12 +899,6 @@ doModule_zfs2 () {
                 -e "$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"  \
                 ${SSH_HOST}::${MODULE}/${MODULE}.snapExport.gz ${workDir}
             rc=$?
-        
-            local dryRun=`$ECHO ${RSYNC_OPTS} | $GREP -c dry-run`
-            if [ "$dryRun" -ne 0 ]; then
-                $ECHO dry run complete
-                return
-            fi
             ;;
     esac
         
@@ -934,47 +942,7 @@ doModule_zfs2 () {
             $ECHO "=============================================================================="
             ;;
     esac
-    writeStatus "$rc" "$MODULE" "${workLog}" "" "$timeStamp" "$elapsedMin"
-}
-
-
-writeStatus () {
-    local rc="$1"
-    local modName=$2
-    local logFile="$3"
-    local statFile="$4"     #may be blank if no stats file available
-    local timeStamp="$5"
-    local elapsedMin="$6"
-
-    # only create a status file if this script was called with the '-j' option
-    [ -z "$JOB_PATH" ] && return
-
-    local statusDir=${JOB_PATH}${JOB_STATUS_DIR_SUFFIX}
-    local pad=`$ECHO $modName | $AWK '{print substr("________________________________________",1,40-length($1))}'`
-    $MKDIR -p $statusDir
-
-    local status=
-    if [ $rc -eq 0 ]; then    
-        $RM -f ${statusDir}/${modName}_*
-        status=SUCCESS
-    else
-        $RM -f ${statusDir}/${modName}_*FAILURE
-        status=FAILURE
-    fi 
-
-    {
-        $ECHO "# jobName:  ${JOB_PATH##*/}"
-        $ECHO "# modName:  $modName"
-        $ECHO "# rc:       $rc"
-        $ECHO "# duration: $elapsedMin"
-        $ECHO "# logFile:  $logFile"
-        $ECHO "# statFile: $statFile"
-        $ECHO 
-        $ECHO "$JOB_PATH"
-        for p in "${COMMAND_PARMS[@]}"; do
-            $ECHO "$p";
-        done
-    } > ${statusDir}/${modName}_${pad}_$(timeStamp}_${status}
+    return $rc
 }
 
 
@@ -998,8 +966,6 @@ tunnel_destroy () {
         $ECHO " done" 1>&2
     fi
 }
-
-
 
 
 ###############################################################################
@@ -1092,14 +1058,11 @@ rsyncErrorCode () {
 ###############################################################################
 # main
 ###############################################################################
-COMMAND_PATH=`$READLINK -f "$0"`
-COMMAND_PARMS=( "$@" )
-
 case ${0##*/} in      #see how we are called
     backupGT)
-	checkRunningUser
-	parseOptions "$@"
-	defaultEnvironment
+        checkRunningUser
+        parseOptions "$@"
+        defaultEnvironment
         doList 
         ;;
 esac

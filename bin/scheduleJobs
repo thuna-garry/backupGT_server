@@ -5,30 +5,29 @@
 # time interval and queues them for execution
 #
 ###############################################################################
-# todo: rewrite these descriptions
 # Jobs
 #   Implemented as runnable files (typically shell scripts) within directories
-#   named as JOB_ROOT.NNNN where NNNN is the duration in minutes after the
-#   last successful run of the job that the job should be (re)queued for 
-#   execution
+#   subordinate to JOB_ROOT.  Jobs will be managed if they are executable and
+#   located in a direcotry that also contains a JOB_CONTROL file.
 #
-#   Example: if the configuration variable JOB_ROOT is ~/backupGT/jobs/ then
-#   this script will find directories named ~/backupGT/jobs/jobs.NNNN.
-#   If then, ~/backupGT/jobs/job.14400 exists then for each job file found
-#   directly within ~/backupGT/jobs/job.14400, a check will be made to see
-#   that the job has successfully been run within the last 14400 minutes
-#   (1 day in this example).  
-#  
+# Job ModList
+#   Associated with each job is a modList file named the same as the jobFile
+#   but with $JOB_MODLIST_SUFFIX appended.
+#   The modification date of this modList file is used to indicate how recently
+#   the job ran. If present it will contain the module list as supplied by
+#   the target host.
+#   
+#   When present (and recent) each module listed will be checked to see that it
+#   has had a successful completion within the JOB_INTERVAL (specified in the
+#   JOB_CONTROL file). If not it will be scheduled (enqueued) to run.  Failed
+#   jobs will only be re-scheduled after a minimum wait of JOB_RETRY_INTERVAL.  # 
 # Job Status
-#   The need to re-queue a job (lack of successful completion) is determined as
-#   follows:
-#         - if there is a status file for the job that indicates 
-#           the job did not complete successfully (ie the status file
-#           name will contain the string FAILURE)
-#         - see if there is a status file for the job whose modification
-#           time is older than the prescribed interval
-#         - there are no status files for this job
-# 
+#   Associated with each job is a statud directory named the same as the jobFile
+#   but with $JOB_STATUS_DIR_SUFFIX appended.
+#   Within this directory there will be one status file for each module that has
+#   been previously queued and run.  After each run of the job a line will be
+#   appended with the job's completion status and some additional job control
+#   information.
 ###############################################################################
 
 
@@ -61,12 +60,12 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO
     $ECHO "Usage: $0 [-v]"
     $ECHO "   search the JOB_ROOT for job files that have not successfully completed"
-    $ECHO "   within the last NNNN minutes.  NNNN is determined by the name of the "
-    $ECHO "   directory (which must be job.NNNN) in which the job file is found."
-    $ECHO 
+    $ECHO "   within their prescribed JOB_INTERVAL (as specified in the JOB_CONTROL"
+    $ECHO "   file to be found in the same directory as the job file) and queue them"
+    $ECHO "   to run."
+    $ECHO "Options:"
     $ECHO "  -v  verbose: prints detail of processing to stdout. "
     exit 1
 }
@@ -77,32 +76,38 @@ printMiniUsage() {
 }
 
 
+parseOptions() {
+    while getopts ":v" arg; do
+        case $arg in
+            v) VERBOSE="1" ;;
+            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
+               printFullUsage 1>&2
+               exit 1
+               ;;
+        esac
+    done
+    shift $(( OPTIND - 1 ))
+}
+
+
 ###############################################################################
 # main
 ###############################################################################
-COMMAND_PATH=`$READLINK -f "$0"`
-COMMAND_PARMS=( "$@" )
-
 checkRunningUser
-while getopts ":v" arg; do
-    case $arg in
-        v) VERBOSE="1" ;;
-        *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
-           printFullUsage 1>&2
-           exit 1
-           ;;
-    esac
-done
+parseOptions
 
-for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job directories with a JOB_CONTROL file
+# find all the job directories with a JOB_CONTROL file
+for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
     jobDir=${jobControlFile%/*}
     [ "$VERBOSE" ] && echo "job dir: $jobDir"
 
-    JOB_INTERVAL=1440     #set default 1 day
-    JOB_RETRY_FAILED=60   #set default 1 hour
+    JOB_INTERVAL=1440      #set default 1 day
+    JOB_RETRY_INTERVAL=60  #set default 1 hour
+    JOB_PRIORITY=50        #set default
     . $jobControlFile
 
-    for jobPath in `$FIND $jobDir -perm -0100 -type f -mindepth 1 -maxdepth 1`; do   # all the jobs in the current job directory
+    # find all the jobs in the current job directory
+    for jobPath in `$FIND $jobDir -perm -0100 -type f -mindepth 1 -maxdepth 1`; do
         jobFile=${jobPath##*/}
         [ "$VERBOSE" ] && echo "    job: $jobFile"
 
@@ -116,11 +121,15 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job d
             bsd)   findOp="-ctime -${JOB_INTERVAL}m" ;;
             linux) findOp="-mmin  -${JOB_INTERVAL}"  ;;
         esac
-	recentModList="`$FIND ${jobDir} -name ${JOB_MODLIST_PREFIX}${jobFile} $findOp 2>/dev/null`"
+	recentModList="`$FIND ${jobDir} -name ${jobFile}${JOB_MODLIST_SUFFIX} $findOp 2>/dev/null`"
         if [ -z "$recentModList" ]; then
             [ "$VERBOSE" ] && echo "        ENQUEING (modlist missing or older than $JOB_INTERVAL min)"
 #todo purge queues of any instances of this job
-            ${COMMAND_PATH%/*}/enqueue "$jobPath" "-j" "$jobPath" "-q"
+            "${BACKUPGT_ROOT}/enqueue" \
+                "-j" "$jobPath"        \
+                "-s" ""                \
+                "-p" "$JOB_PRIORITY"   \
+                "--"
             continue
         fi
         
@@ -129,11 +138,13 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job d
         #----------------
         $CAT $recentModList | while read modName modComment; do
             [ "$VERBOSE" ] && echo '        mod: ' $modName
-            modLine=`grep "^$modName	" "${jobDir}/${JOB_STATUS_PREFIX}${jobFile}" 2>/dev/null`
-            curState=`            echo "$modLine" | parseAssignment curState`
-            lastSuccessTimeStamp=`echo "$modLine" | parseAssignment lastSuccessTimeStamp`
-            lastFailureTimeStamp=`echo "$modLine" | parseAssignment lastFailureTimeStamp`
-         
+            statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
+            statusPath="${statusDir}/${modName}"
+            statLine=`$SORT -n $statusPath 2>/dev/null | $TAIL -1`
+
+            curState=`            echo "$statLine" | parseAssignment curState`
+            lastSuccessTimeStamp=`echo "$statLine" | parseAssignment lastSuccessTimeStamp`
+            lastFailureTimeStamp=`echo "$statLine" | parseAssignment lastFailureTimeStamp`
             
             case x$curState in
                 xSUCCESS)
@@ -146,12 +157,12 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job d
                     fi
                     ;;
                 xFAILURE)
-                    maxAge=`$EXPR $JOB_RETRY_FAILED \* 60`
+                    maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
 		    needToQueue=`isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge`
                     if [ $needToQueue ]; then
-                        [ "$VERBOSE" ] && echo "            ENQUEUE: curState=$curState wait period $JOB_RETRY_FAILED expired"
+                        [ "$VERBOSE" ] && echo "            ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
                     else
-                        [ "$VERBOSE" ] && echo "            curState=$curState too recent (wait $JOB_RETRY_FAILED before retry)"
+                        [ "$VERBOSE" ] && echo "            curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
                     fi
                     ;;
                 *)
@@ -161,7 +172,11 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do   # all the job d
             esac
         
             if [ $needToQueue ]; then
-                "${COMMAND_PATH%/*}/enqueue" "$jobPath" "-j" "$jobPath" "-s" "$modName"
+                "${BACKUPGT_ROOT}/enqueue" \
+                    "-j" "$jobPath"        \
+                    "-s" "$modName"        \
+                    "-p" "$JOB_PRIORITY"   \
+                    "--"
                 if [ $? -eq 100 ]; then
                     [ "$VERBOSE" ] && echo '            attempted enqueue but job already queued'
                 fi

@@ -1,13 +1,9 @@
 #! /usr/local/bin/bash
 
 ###############################################################################
-# This script finds the job at the head of a queue and runs it.
-###############################################################################
-# Queue entries
-#   Are files with names of the form "qe_pp-timestamp_desc_<crc32>" and
-#   which have as their first line of content the full path name of the job
-#   executable to run, followed by a line for each parameter to place on the
-#   command line when the job is run.
+# This script spawns multiple copies of itself and each copy pulls and runs
+# the job at the top of the queue (priority / FIFO order).
+#
 ###############################################################################
 
 
@@ -40,13 +36,24 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO
     $ECHO "Usage: $0 [<runnerNumber>]"
+    $ECHO "   This script spawns multiple copies of itself and each copy pulls and runs"
+    $ECHO "   the job at the top of the queue (priority / FIFO order)."
+    $ECHO "Options:"
     $ECHO "   runnerNumber: a unique id to identify an instance of this script"
     $ECHO "                 from other instances. runnerNumber will be in the"
     $ECHO "                 range 1 to QUEUE_RUNNERS"
     $ECHO "   if called without the runnerNumber parameter then QUEUE_RUNNERS"
     $ECHO "   instances will be spawned each with a distinct runnerNumber"
+    $ECHO 
+    $ECHO " If the queued job does not specify a module then the job will be invoked"
+    $ECHO " with the -j option, and if a module is specified the job will be invoked"
+    $ECHO " with the -s."
+    $ECHO 
+    $ECHO " All job files must accept additional command line parameters and in turn "
+    $ECHO " append them to the command line when calling backupGT.  Furthermore the"
+    $ECHO " return code from the job file should be 0 for success, non-zero for failure"
+    $ECHO " as returned from backupGT."
     exit 1
 }
 
@@ -71,6 +78,7 @@ printMiniUsage() {
 #       - remove the mutex
 ###############################################################################
 checkRunningUser
+
 case "$#" in
     0) for qrNum in `$SEQ $QUEUE_RUNNERS`; do
            $0 ${qrNum} &    # re-launch this script for each queueRunner
@@ -117,43 +125,53 @@ for mutex in $queueDir/mutex_${qrNum}*; do
 done
 
 # okay lets get the head of the queue
-queueEntry=`$LS $queueDir/qe_* 2>/dev/null | $HEAD -1`
-if [ -z "$queueEntry" ]; then
+firstQueuedJob=`$LS $queueDir/qj_* 2>/dev/null | $HEAD -1`
+if [ -z "$firstQueuedJob" ]; then
     # no jobs left to run
     $RM -f $thisMutex
     exit 0
 fi
 
 # rename it to ensure that we have exclusive control of the entry
-mxqe="$queueDir/mx_${qrNum}_${queueFile}"
-$MV "$queueDir/$queueFile" "$mxqe" 2>/dev/null
-if [ ! -f "$mxqe" ];
+mxqj="$queueDir/mx_${qrNum}_${firstQueuedJob}"
+$MV "$queueDir/$firstQueuedJob" "$mxqj" 2>/dev/null
+if [ ! -f "$mxqj" ];
     # some other queueRunner grabbed the entry before us
     $RM -f $thisMutex
     exec $0 $* &    # try again
 fi
 
-# so now we have a queue entry lets run it and update the status
-jobDir=` $AWK '/^# jobDir:/  {print $3}' "${mxqe}"`
-jobFile=`$AWK '/^# jobFile:/ {print $3}' "${mxqe}"`
-modName=`$AWK '/^# modName:/ {print $3}' "${mxqe}"`
-$mxqe
-rc=$?
-if [ $? -eq 0 ]; then   #success
-    modLine=`$GREP "^${modName}	" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}`
-    modLine=`$ECHO $modLine | makeAssignment curState SUCCESS`
-    modLine=`$ECHO $modLine | makeAssignment lastSuccessTimeStamp $timeStamp`
-    modLine=`$ECHO $modLine | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)`
-    $SED -i "/^${modName}	/s/.*/${modLine}/" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}
-else #failure
-    modLine=`$GREP "^$modName	" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}`
-    modLine=`$ECHO $modLine | makeAssignment curState SUCCESS`
-    modLine=`$ECHO $modLine | makeAssignment lastFailureTimeStamp $timeStamp`
-    modLine=`$ECHO $modLine | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)`
-    $SED -i "/^${modName}	/s/.*/${modLine}/" ${jobDir}/${JOB_MODLIST_PREFIX}${jobFile}
+# so now we have a queue entry lets run it
+jobDir=` $AWK '/^jobDir:/  {print $2}' "${mxqj}"`
+jobFile=`$AWK '/^jobFile:/ {print $2}' "${mxqj}"`
+modName=`$AWK '/^modName:/ {print $2}' "${mxqj}"`
+if [ -z "$modName" ]; then
+    ${jobDir}/${jobFile} -j ${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
+    rc=$?
+else
+    ${jobDir}/${jobFile} -s "$modName"
+    rc=$?
 fi
 
+# lets append a status entry to the status file
+statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
+statusPath="${statusDir}/${modName}"
+statLine=`$SORT -n $statusPath 2>/dev/null | $TAIL -1`
+if [ "$rc" -eq 0 ]; then
+    statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $timeStamp`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)`
+else
+    statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $timeStamp`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)`
+fi
+$MKDIR -p $statusDir    #ensure that the job status dir exists
+$ECHO "$statLine" >> $statusPath
+
 # dequeue completed job and cleanup
-$RM -f $mxqe
+$RM -f $mxqj
 $RM -f $thisMmutex
 
+# restart next instance of this queueRunner
+exec $0 ${qrNum} 

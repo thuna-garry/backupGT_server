@@ -2,7 +2,7 @@
 # shared application globals
 ################################################################################
 
-JOB_MODLIST_PREFIX=".modList."
+JOB_MODLIST_SUFFIX=".modList"
     # job control .modlist. status variables
     #   curState               SUCCESS, FAILURE
     #   lastSuccessTimeStamp   in UTC seconds since epoch
@@ -10,10 +10,7 @@ JOB_MODLIST_PREFIX=".modList."
     #   lastSuccessDate        in UTC +%Y%m%d_%H%M%S format
     #   lastFailureDate        in UTC +%Y%m%d_%H%M%S format
 
-JOB_STATUS_PREFIX=".history."
-
-# The names of specific status files
-JOB_STATUS_VAR="_status"
+JOB_STATUS_DIR_SUFFIX=".status"
 
 
 ################################################################################
@@ -108,5 +105,33 @@ isTimeStampTooOld () {
     elapsed=`$EXPR $curTs - $eventTs`
     [ "$elapsed" -gt "$maxAge" ] && return 0 || return 1
 }
+
+
+################################################################################
+# Shell scripting notes
+################################################################################
+
+#-------------
+#- accessing return code from command that is part of a filter
+#- bash has PIPESTATUS but for other shells ...
+#-------------
+# Here's a way to do it by making your own (named) pipe.
+# 
+# $ mkfifo pipe #make a pipe, named "pipe"
+# $ postprocesor_that_succeeds < pipe &  #the call to read from pipe will block until a program writes to pipe
+# $ mycmd_that_fails > pipe
+# 
+# I hope the above is understandable, I included comments (which start at the # and extend to the
+#  end of the line, they are safe to put in the command line).
+# 
+# To make sure this worked, I did this:
+# 
+# $ mkfifo pipe
+# $ cat < pipe &
+# $ bash #start a new shell, just for the exit value
+# $ exit 2 > pipe #exit out of new shell
+# $ echo $? #back in first shell
+# 2
+#
 
 

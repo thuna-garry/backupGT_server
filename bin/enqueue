@@ -1,26 +1,33 @@
 #! /usr/local/bin/bash
 
 ###############################################################################
-# This script enqueues jobs passed on its command line to one of a number
-# of queues.  The default behaviour is to simply add the job to whichever
-# queue is shortest (basically assuming all queues have similar priority and
-# are being used to load balance amongst a number of queueRunners).
+# This script enqueues jobs, after first checking to ensure that an identical
+# job does not already exist in the queue.
 #
-# Each job file's name includes a timestamp of when the job was queued and
-# a checksum of it's contents.  The date is used to establish a simple FIFO
-# ordering of jobs within each queue.  The checksum is used to prevent jobs
-# from being queued multiple times (before a job is enqueued all queues are 
-# searched for any job whose file name has the same checksum)
+# Each job file's name includes a priority, timestamp of when the job was
+# queued, a description, and a checksum of its contents. The priority and
+# timestamp are used to establish the processing order (a simple, sorted,
+# directory listing will show the processing order).  The checksum is used
+# to prevent jobs from being queued multiple times (before a job is enqueued
+# all queues are searched for any job whose file name has the same checksum).
+#
 ###############################################################################
 # Queues
-#   Implemented as sibling directories under a QUEUE_ROOT where each queue
-#   directory has a name of the form qN and where N is an arbitrary integer.
+#   Single directory with a file for each enqueued job.
 #
-# Queue entries
-#   Are files with names of the form  "job_yyyymmdd_hhmmssz_<crc32>" and 
-#   which have as their first line of content the full path name of the job
-#   executable to run, followed by a line for each parameter to place on the
-#   command line when the job is run.
+# Queued jobs
+#   Are files with names of the form "qj_pp-timestamp_desc_crc32", where
+#     qj:        literal 'qj' (abbr "queued job")
+#     pp:        priority represented by a two digit integer (00=highest)
+#     timestamp: the UTC seconds since the epoch
+#     desc:      arbitrary human readable string (generally jobName_modName)
+#     crc32:     the checksum of the file contents
+#
+# The queued jobFile itself has a very simple structure as follows:
+#     jobDir:  <jobDir>
+#     jobFile: <jobFile>
+#     modName: <modName>
+#
 ###############################################################################
 # Modified enqueue to chack for duplicate jobs before adding a job into the
 # execution queue.  This is done by making a checksum as part of the queued
@@ -30,13 +37,15 @@
 # return code:  0     success
 #               1     error
 #               100   job already queued - enqueue cancelled
+#
 ###############################################################################
 
 
 ###############################################################################
-# get user defined globals
+# include user defined globals and the common library
 ###############################################################################
 . ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
 SUDO=""
@@ -48,7 +57,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012-06-28'
+LAST_MODIFIED_DATE='2012-10-14'
 
 
 ###############################################################################
@@ -61,11 +70,16 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO
-    $ECHO "Usage: $0 <jobName> [<jobParm> [..]]"
-    $ECHO "   jobName: the canonical path to an executable file"
-    $ECHO "   jobParm: the parameters that are to be placed on the command line of"
-    $ECHO "            jobName when jobName is later dequeued and executed"
+    $ECHO "Usage: $0 -j <jobPath> -s <modName> [-p <priority>] [-v]"
+    $ECHO "Options:"
+    $ECHO "   -j <jobPath>   The canonical path to the executable job file"
+    $ECHO "   -s <modName>   The module name to run the job for.  Athough this parameter"
+    $ECHO "                  must be supplied it can be an emply string to indicated that"
+    $ECHO "                  the job will be run to retrieve the module list from the"
+    $ECHO "                  target."
+    $ECHO "   -p <priority>  The priority as a two digit integer where 00 has the highest"
+    $ECHO "                  priority and 99 the lowest.  Default = 50"
+    $ECHO "   -v             Print verbose output"
     exit 1
 }
 
@@ -75,69 +89,68 @@ printMiniUsage() {
 }
 
 
-checkRunningUser () {
-    local opt
-    case $SYSTEM_TYPE in
-        linux) opt="-c" ;;
-        bsd)   opt="-f" ;;
-    esac
+parseOptions() {
+    local opSsupplied
+    while getopts ":j:s:p:v" arg; do
+        case $arg in
+            j) jobPath="${OPTARG}" ;;
+            s) modName="${OPTARG}"
+               sOptionSupplied="1" ;;
+            p) jobPriority="${OPTARG}" ;;
+            v) VERBOSE="1" ;;
+            :) echo "Option -${OPTARG} requires an argument." 1>&2
+               exit 1
+               ;;
+            *) echo "Option -${OPTARG} not recognized as a valid option." 1>&2
+               exit 1
+               ;;
+        esac
+    done
+    shift $(( OPTIND - 1 ))
 
-    if [ `$STAT $opt %u -L $QUEUE_ROOT` -ne `$ID -u` ]; then
-        $ECHO "Error: $0 can only be run by the queue owner \(`$STAT $opt %U -L $QUEUE_ROOT`\)."
-        exit 1
-    fi
+    [ -z "jobPath" ] && printFullUsage 
+    jobDir=${jobPath%/*}
+    jobFile=${jobPath##*/}
 
-    USER_NUM=`$ID -nu`
-    GROUP_NUM=`$ID -ng`
-}
+    [ -z "sOptionSupplied" ] && printFullUsage
 
+    jobPriority=`echo $priority | grep "^[0-9][0-9]$"`
+    jobPriority=${priority:-50}
 
-shortestQueue () {
-    $FIND $QUEUE_ROOT                                    \
-         | $GREP "$QUEUE_ROOT/q[0-9]"                    \
-         | $SED "s:^\($QUEUE_ROOT/q[0-9]*\)\(.*\):\1:"   \
-         | $UNIQ -c                                      \
-         | $SORT -n                                      \
-         | $HEAD -1                                      \
-         | $AWK '{ print $2 }'
+    #if [ $# -eq 0 ]; then
+    #    printFullUsage
+    #fi
 }
 
 
 ###############################################################################
 # main
 ###############################################################################
-COMMAND_PATH=`$READLINK -f "$0"`
-COMMAND_PARMS=( "$@" )
+checkRunningUser
+parseOptions
 
-if [ $# -eq 0 ]; then
-    printFullUsage
-fi
-
-# ensure that all queueDirectories exist
-for i in `seq 1 $QUEUES_COUNT`; do
-    mkdir -p $QUEUE_ROOT/q$i
-done
+# ensure that the queueDirectory exists
+mkdir -p $QUEUE_ROOT
 
 # create a candidate queue file and populate
-jobFile=`$MKTEMP $(shortestQueue)/tmp_XXXXX`
+tmpPath=`$MKTEMP $(QUEUE_ROOT)/tmp_XXXXX`
+[ "$VERBOSE" ] && echo "canadidate jobFile: $tmpPath"
 
-echo `$READLINK -f "${COMMAND_PARMS[0]}"` >> $jobFile
-for i in `$SEQ 1 ${#COMMAND_PARMS[@]}`; do
-    echo "${COMMAND_PARMS[$i]}" >> $jobFile
-done
+$ECHO 'jobDir:  $jobDir'   >> $tmpPath
+$ECHO 'jobFile: $jobFile'  >> $tmpPath
+$ECHO 'modName: $modName'  >> $tmpPath
 
-echo ">>>> parms " ${COMMAND_PARMS[@]}
 # check that the candidate file is not a duplicate of an already queued job
-hash=`cksum $jobFile | sed 's/^\([[:alnum:]]*\).*/\1/'`
-echo ">>>> hash " $hash
-isDup=`find $QUEUE_ROOT -type f -name \*$hash\*`
-echo ">>>> isDup " $isDup
+crc=`cksum $tmpFile | sed 's/^\([[:alnum:]]*\).*/\1/'`
+isDup=`find $QUEUE_ROOT -type f -name qj_\*_$crc`
 if [ -z "$isDup" ]; then
-    mv $jobFile  $(shortestQueue)/job_$($DATE -u +%Y%m%d_%H%M%Sz)_$hash
+    timeStamp=`$DATE -u +%s`
+    qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName}_${crc}
+    mv $tmpPath $qjPath
+    [ "$VERBOSE" ] && echo "    ENQUEUED as: $qjPath"
 else
-    #echo "Job already queued ($1) - ${0##*/} cancelled."
-    rm -f $jobFile
-    rm -f $QUEUE_ROOT/q*/tmp_*    #also fix any aborted cleanups
+    [ "$VERBOSE" ] && echo "    job already queued as: $qjPath"
+    rm -f $tmpPath
     exit 100
 fi
 
