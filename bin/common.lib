@@ -27,7 +27,7 @@ timeStamp2Date() {
 date2timeStamp() {
     local date=$1
     case $SYSTEM_TYPE in
-        linux) #todo ;;
+        linux) ;;  #todo
         bsd)   $DATE -jf %Y%m%d_%H%M%S ${date} +%s ;;
     esac
 }

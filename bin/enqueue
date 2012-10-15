@@ -96,7 +96,7 @@ parseOptions() {
             j) jobPath="${OPTARG}" ;;
             s) modName="${OPTARG}"
                sOptionSupplied="1" ;;
-            p) jobPriority="${OPTARG}" ;;
+            p) priority="${OPTARG}" ;;
             v) VERBOSE="1" ;;
             :) echo "Option -${OPTARG} requires an argument." 1>&2
                exit 1
@@ -114,8 +114,8 @@ parseOptions() {
 
     [ -z "sOptionSupplied" ] && printFullUsage
 
-    jobPriority=`echo $priority | grep "^[0-9][0-9]$"`
-    jobPriority=${priority:-50}
+    priority=`echo $priority | grep "^[0-9][0-9]$"`
+    priority=${priority:-50}
 
     #if [ $# -eq 0 ]; then
     #    printFullUsage
@@ -127,30 +127,30 @@ parseOptions() {
 # main
 ###############################################################################
 checkRunningUser
-parseOptions
+parseOptions "$@"
 
 # ensure that the queueDirectory exists
-mkdir -p $QUEUE_ROOT
+$MKDIR -p $QUEUE_ROOT
 
 # create a candidate queue file and populate
-tmpPath=`$MKTEMP $(QUEUE_ROOT)/tmp_XXXXX`
-[ "$VERBOSE" ] && echo "canadidate jobFile: $tmpPath"
+tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXX`
+[ "$VERBOSE" ] && $ECHO "        canadidate jobFile: $tmpPath"
 
-$ECHO 'jobDir:  $jobDir'   >> $tmpPath
-$ECHO 'jobFile: $jobFile'  >> $tmpPath
-$ECHO 'modName: $modName'  >> $tmpPath
+$ECHO "jobDir:  $jobDir"   >> $tmpPath
+$ECHO "jobFile: $jobFile"  >> $tmpPath
+$ECHO "modName: $modName"  >> $tmpPath
 
 # check that the candidate file is not a duplicate of an already queued job
-crc=`cksum $tmpFile | sed 's/^\([[:alnum:]]*\).*/\1/'`
-isDup=`find $QUEUE_ROOT -type f -name qj_\*_$crc`
+crc=`$CKSUM $tmpPath | $SED 's/^\([[:alnum:]]*\).*/\1/'`
+isDup=`$FIND $QUEUE_ROOT -type f -name qj_\*_$crc`
 if [ -z "$isDup" ]; then
     timeStamp=`$DATE -u +%s`
     qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName}_${crc}
-    mv $tmpPath $qjPath
-    [ "$VERBOSE" ] && echo "    ENQUEUED as: $qjPath"
+    $MV $tmpPath $qjPath
+    [ "$VERBOSE" ] && $ECHO "        ENQUEUED as: $qjPath"
 else
-    [ "$VERBOSE" ] && echo "    job already queued as: $qjPath"
-    rm -f $tmpPath
+    [ "$VERBOSE" ] && $ECHO "        job already queued as: ${isDup##*/}"
+    $RM -f $tmpPath
     exit 100
 fi
 

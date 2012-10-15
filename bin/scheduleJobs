@@ -1,4 +1,4 @@
-#! /usr/local/bin/bash
+#! /usr/local/bin/bash 
 
 ###############################################################################
 # This script finds jobs that haven't successfully run within a prescribed
@@ -94,12 +94,12 @@ parseOptions() {
 # main
 ###############################################################################
 checkRunningUser
-parseOptions
+parseOptions "$@"
 
 # find all the job directories with a JOB_CONTROL file
 for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
     jobDir=${jobControlFile%/*}
-    [ "$VERBOSE" ] && echo "job dir: $jobDir"
+    [ "$VERBOSE" ] && echo "job dir: ${jobDir##*/}  ($jobDir)"
 
     JOB_INTERVAL=1440      #set default 1 day
     JOB_RETRY_INTERVAL=60  #set default 1 hour
@@ -125,10 +125,11 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         if [ -z "$recentModList" ]; then
             [ "$VERBOSE" ] && echo "        ENQUEING (modlist missing or older than $JOB_INTERVAL min)"
 #todo purge queues of any instances of this job
-            "${BACKUPGT_ROOT}/enqueue" \
-                "-j" "$jobPath"        \
-                "-s" ""                \
-                "-p" "$JOB_PRIORITY"   \
+            "${BACKUPGT_ROOT}/bin/enqueue"     \
+                `[ "$VERBOSE" ] && $ECHO "-v"` \
+                "-j" "$jobPath"                \
+                "-s" ""                        \
+                "-p" "$JOB_PRIORITY"           \
                 "--"
             continue
         fi
@@ -172,10 +173,11 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
             esac
         
             if [ $needToQueue ]; then
-                "${BACKUPGT_ROOT}/enqueue" \
-                    "-j" "$jobPath"        \
-                    "-s" "$modName"        \
-                    "-p" "$JOB_PRIORITY"   \
+                "${BACKUPGT_ROOT}/bin/enqueue"     \
+                    `[ "$VERBOSE" ] && $ECHO "-v"` \
+                    "-j" "$jobPath"                \
+                    "-s" "$modName"                \
+                    "-p" "$JOB_PRIORITY"           \
                     "--"
                 if [ $? -eq 100 ]; then
                     [ "$VERBOSE" ] && echo '            attempted enqueue but job already queued'

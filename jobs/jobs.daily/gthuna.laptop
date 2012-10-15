@@ -1,8 +1,7 @@
 #! /bin/sh
 
-jobFile=`readlink -f $0`
-jobName=${0##*/}
 bgtDir=/usr/local/backupGT_server
+jobName=${0##*/}
 
 export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 (printenv > ${bgtDir}/tmp/job.${jobName}.printenv)
@@ -24,5 +23,5 @@ export RSYNC_HOST=$SSH_HOST
 export RSYNC_OPTS="-vi"
 
 # do the backup
-backupGT -j "$jobFile" -h $hostName -t $hostType $* 
+backupGT -h $hostName -t $hostType $* 
 
