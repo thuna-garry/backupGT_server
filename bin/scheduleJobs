@@ -21,6 +21,7 @@
 #   has had a successful completion within the JOB_INTERVAL (specified in the
 #   JOB_CONTROL file). If not it will be scheduled (enqueued) to run.  Failed
 #   jobs will only be re-scheduled after a minimum wait of JOB_RETRY_INTERVAL.  # 
+#
 # Job Status
 #   Associated with each job is a statud directory named the same as the jobFile
 #   but with $JOB_STATUS_DIR_SUFFIX appended.
@@ -93,6 +94,66 @@ parseOptions() {
 }
 
 
+#------
+# determine if a module should be queued based on examination of status files
+#------
+needToQueue () {
+    local jobPath="$1"
+    local modName="$2"
+    local needed 
+
+    statusDir="${jobPath}${JOB_STATUS_DIR_SUFFIX}"
+    statusPath="${statusDir}/${modName}"
+    statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
+
+    curState=`            $ECHO "$statLine" | parseAssignment curState`
+    lastSuccessTimeStamp=`$ECHO "$statLine" | parseAssignment lastSuccessTimeStamp`
+    lastFailureTimeStamp=`$ECHO "$statLine" | parseAssignment lastFailureTimeStamp`
+            
+    case x$curState in
+        xSUCCESS)
+            maxAge=`$EXPR $JOB_INTERVAL \* 60`
+            needed=`isTimeStampTooOld ${lastSuccessTimeStamp:-1} $maxAge`
+            if [ $needed ]; then
+                [ "$VERBOSE" ] && $ECHO "            ENQUEUE: curState=$curState too old ($JOB_INTERVAL max age)"
+            else
+                [ "$VERBOSE" ] && $ECHO "            curState=$curState sufficiently recent ($JOB_INTERVAL max age)"
+            fi
+            ;;
+        xFAILURE)
+            maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
+            needed=`isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge`
+            if [ $needed ]; then
+                [ "$VERBOSE" ] && $ECHO "            ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
+            else
+                [ "$VERBOSE" ] && $ECHO "            curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
+            fi
+            ;;
+        *)
+            edToQueue=0  #0=true   
+            [ "$VERBOSE" ] && $ECHO "            ENQUEUE: no prior stats"
+            ;;
+    esac
+    return $needed
+}
+
+
+callEnqueue () {
+    local jobPath="$1"
+    local modName="$2"
+
+    "${BACKUPGT_ROOT}/bin/enqueue"     \
+        `[ "$VERBOSE" ] && $ECHO "-v"` \
+        "-j" "$jobPath"                \
+        "-s" "$modName"                \
+        "-p" "$JOB_PRIORITY"           \
+        "--"
+    if [ $? -eq 100 ]; then
+        [ "$VERBOSE" ] && $ECHO '            attempted enqueue but job already queued'
+    fi
+}
+
+
 ###############################################################################
 # main
 ###############################################################################
@@ -104,6 +165,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
     jobDir=${jobControlFile%/*}
     [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
 
+    # set default job control parameters and souce the file
     JOB_INTERVAL=1440      #set default 1 day
     JOB_RETRY_INTERVAL=60  #set default 1 hour
     JOB_PRIORITY=50        #set default
@@ -115,79 +177,27 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
 
         # if a custom job control file exists then source it
-        [ -f "${jobPath}${JOB_CONTROL}" ] && . "${jobPath}${JOB_CONTROL}"
+        [ -f "${jobPath}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}${JOB_CONTROL_SUFFIX}"
 
         #----------------
         # consider the job file itself
         #----------------
-        case $SYSTEM_TYPE in
-            bsd)   findOp="-ctime -${JOB_INTERVAL}m" ;;
-            linux) findOp="-mmin  -${JOB_INTERVAL}"  ;;
-        esac
-	recentModList="`$FIND ${jobDir} -name ${jobFile}${JOB_MODLIST_SUFFIX} $findOp 2>/dev/null`"
-        if [ -z "$recentModList" ]; then
-            [ "$VERBOSE" ] && $ECHO "        ENQUEING (modlist missing or older than $JOB_INTERVAL min)"
-#todo purge queues of any instances of this job
-            "${BACKUPGT_ROOT}/bin/enqueue"     \
-                `[ "$VERBOSE" ] && $ECHO "-v"` \
-                "-j" "$jobPath"                \
-                "-s" ""                        \
-                "-p" "$JOB_PRIORITY"           \
-                "--"
+        if needToQueue "${jobPath}" "${JOB_MODLIST_STATUS}"; then
+            callEnqueue "${jobPath}" ""
             continue
         fi
-        
+	recentModList="${jobPath}${JOB_MODLIST_SUFFIX}"
+      
         #----------------
         # now consider the modules
         #----------------
-        $CAT $recentModList | while read modName modComment; do
+        while read modName modComment <$recentModList ; do
             [ "$VERBOSE" ] && $ECHO '        mod: ' $modName
-            statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
-            statusPath="${statusDir}/${modName}"
-            statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
-
-            curState=`            $ECHO "$statLine" | parseAssignment curState`
-            lastSuccessTimeStamp=`$ECHO "$statLine" | parseAssignment lastSuccessTimeStamp`
-            lastFailureTimeStamp=`$ECHO "$statLine" | parseAssignment lastFailureTimeStamp`
-            
-            case x$curState in
-                xSUCCESS)
-                    maxAge=`$EXPR $JOB_INTERVAL \* 60`
-		    needToQueue=`isTimeStampTooOld ${lastSuccessTimeStamp:-1} $maxAge`
-                    if [ $needToQueue ]; then
-                        [ "$VERBOSE" ] && $ECHO "            ENQUEUE: curState=$curState too old ($JOB_INTERVAL max age)"
-                    else
-                        [ "$VERBOSE" ] && $ECHO "            curState=$curState sufficiently recent ($JOB_INTERVAL max age)"
-                    fi
-                    ;;
-                xFAILURE)
-                    maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
-		    needToQueue=`isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge`
-                    if [ $needToQueue ]; then
-                        [ "$VERBOSE" ] && $ECHO "            ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
-                    else
-                        [ "$VERBOSE" ] && $ECHO "            curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
-                    fi
-                    ;;
-                *)
-		    needToQueue=0  #0=true   
-                    [ "$VERBOSE" ] && $ECHO "            ENQUEUE: no prior stats"
-                    ;;
-            esac
-        
-            if [ $needToQueue ]; then
-                "${BACKUPGT_ROOT}/bin/enqueue"     \
-                    `[ "$VERBOSE" ] && $ECHO "-v"` \
-                    "-j" "$jobPath"                \
-                    "-s" "$modName"                \
-                    "-p" "$JOB_PRIORITY"           \
-                    "--"
-                if [ $? -eq 100 ]; then
-                    [ "$VERBOSE" ] && $ECHO '            attempted enqueue but job already queued'
-                fi
+            if needToQueue "${jobPath}" "${modName}"; then
+                callEnqueue "${jobPath}" "${modName}"
             fi
-
         done
+
     done
 done 
 
