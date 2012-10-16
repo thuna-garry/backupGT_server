@@ -424,6 +424,8 @@ defaultEnvironment() {
 
 getModuleList () {
     # obtain complete list of modules from target
+    
+    local rc
     case "$TRANSPORT" in
         tunnel)
             tunnel_create
@@ -432,12 +434,15 @@ getModuleList () {
         rsync)
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
                                   $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
+            rc=$?
             ;;
         ssh)
             [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	$MODULE" 1>&2
                                   $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	$MODULE"
+            rc=$?
             ;;
     esac
+    return $rc  #only accessible to caller if output redirected to (tmp)file
 }
 
 
@@ -447,36 +452,46 @@ getModuleList () {
 doList () {
     $ECHO 
     $ECHO 
-    $ECHO  "Begin processing of $SRC_NAME"
-    $ECHO  "    using transport type: $TRANSPORT" 
+    $ECHO "Begin processing of $SRC_NAME"
+    $ECHO "    using transport type: $TRANSPORT" 
+    $ECHO "    retrieving module list"
 
-    local mods="`getModuleList`"
+    # if called with the -j option just output the mod list
+    local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXX`
+    getModuleList > $modListPath
     local rc=$?
 
     # if called with the -j option just output the mod list
     if [ -n "$JOB_MOD_LIST_PATH" ]; then
-        $ECHO "$mods" > "$JOB_MOD_LIST_PATH"
+        if [ $rc -eq 0 ]; then
+            $ECHO "    writing module list to " "$JOB_MOD_LIST_PATH"
+            $CAT <"$modListPath" >"$JOB_MOD_LIST_PATH"
+        else
+            $ECHO "    error encountered aborting."
+        fi
+        $RM -f "$modListPath"
         return $rc
     fi
 
     #display the module list
     if [ "$MODULE" ]; then    
-        $ECHO "    available modules are"
-        $ECHO "$mods" | while read mod; do
-            $ECHO "    $mod"
-        done 
-    else
         $ECHO "    module $MODULE is"
         $ECHO -n "        "
-        $ECHO "$mods" | $GREP "^${MODULE}	" 
+        $GREP "^${MODULE}	" "$modListPath"
+    else
+        $ECHO "    available modules are"
+        $CAT "$modListPath" | while read mod; do
+            $ECHO "    $mod"
+        done 
     fi
     $ECHO
 
+    # process each module
     local modName
     local modComment
     local auto
     local singleMod="$MODULE"    #if -s option specified then MODULE will be set
-    $ECHO "$mods" | while read modName modComment; do
+    $CAT "$modListPath" | while read modName modComment; do
         #WARNING:  this loop is reading from stdin so any contained command that reads stdin will cause problems
  
         #catch the case where a single module has been specified
@@ -502,6 +517,8 @@ doList () {
         fi
     done 
     $ECHO
+
+    $RM -f "$modListPath"
     return $rc
 }
 
@@ -1067,7 +1084,8 @@ rsyncErrorCode () {
 ###############################################################################
 # main
 ###############################################################################
-case ${0##*/} in      #see how we are called
+SCRIPT_NAME=${0##*/}
+case $SCRIPT_NAME in      #see how we are called
     backupGT)
         checkRunningUser
         parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"

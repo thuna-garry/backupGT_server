@@ -185,10 +185,14 @@ jobDir=` $AWK '/^jobDir:/  {print $2}' "${mxqj}"`
 jobFile=`$AWK '/^jobFile:/ {print $2}' "${mxqj}"`
 modName=`$AWK '/^modName:/ {print $2}' "${mxqj}"`
 if [ -z "$modName" ]; then
-#    ${jobDir}/${jobFile} -j ${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
+        ${jobDir}/${jobFile} -j ${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
+    ${jobDir}/${jobFile} -j ${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
     rc=$?
 else
-#    ${jobDir}/${jobFile} -s "$modName"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
+        ${jobDir}/${jobFile} -s "$modName"
+    ${jobDir}/${jobFile} -s "$modName"
     rc=$?
 fi
 

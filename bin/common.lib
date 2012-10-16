@@ -101,8 +101,6 @@ isTimeStampTooOld () {
     #-------------
     # given an event timestamp (in UTC seconds since epoch) determine if it is older
     # than the specified maxAge
-    #   if yes: set the USER_NUM and GROUP_NUM global variables
-    #   if no:  print error and exit
     #-------------
     local eventTs=$1
     local maxAge=$2

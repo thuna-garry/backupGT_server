@@ -23,5 +23,5 @@ export RSYNC_HOST=$SSH_HOST
 export RSYNC_OPTS="-vi"
 
 # do the backup
-backupGT -h $hostName -t $hostType $* 
+backupGT -h $hostName -t $hostType -v $* 
 
