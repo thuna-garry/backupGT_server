@@ -63,7 +63,8 @@ makeAssignment() {
 
     #first delete any occurance of the variable $var, then append assignment
     $SED -e "s/${var}=[^[:space:]]*//" \
-         -e "s/$/ ${var}=${value}/"
+         -e "s/$/ ${var}=${value}/"    \
+         -e "s/^ //"
 }
 
 

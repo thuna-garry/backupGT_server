@@ -363,7 +363,6 @@ parseOptions() {
                 ;;
         esac
     done
-    shift $(( OPTIND - 1 ))
 
     if [ ! "$SRC_NAME" ]; then
         printMiniUsage 1>&2
@@ -410,6 +409,8 @@ parseOptions() {
         $PRINTF 'debug: RETAIN_DAILY   = "%s"\n' $RETAIN_DAILY    1>&2
         $PRINTF 'debug: RETAIN_EXTRA   = "%s"\n' $RETAIN_EXTRA    1>&2
     fi
+
+    COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
 }
 
 
@@ -450,19 +451,27 @@ doList () {
     $ECHO  "    using transport type: $TRANSPORT" 
 
     local mods="`getModuleList`"
+    local rc=$?
 
+    # if called with the -j option just output the mod list
     if [ -n "$JOB_MOD_LIST_PATH" ]; then
         $ECHO "$mods" > "$JOB_MOD_LIST_PATH"
-        return 0
+        return $rc
     fi
 
-    $ECHO "    available modules are"
-    $ECHO "$mods" | while read mod; do
-        $ECHO "    $mod"
-    done 
+    #display the module list
+    if [ "$MODULE" ]; then    
+        $ECHO "    available modules are"
+        $ECHO "$mods" | while read mod; do
+            $ECHO "    $mod"
+        done 
+    else
+        $ECHO "    module $MODULE is"
+        $ECHO -n "        "
+        $ECHO "$mods" | $GREP "^${MODULE}	" 
+    fi
     $ECHO
 
-    local rc
     local modName
     local modComment
     local auto
@@ -1061,7 +1070,7 @@ rsyncErrorCode () {
 case ${0##*/} in      #see how we are called
     backupGT)
         checkRunningUser
-        parseOptions "$@"
+        parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
         defaultEnvironment
         doList 
         ;;

@@ -31,29 +31,29 @@ backupStatus () {
     local nwords
     local line
     for f in $files; do
-        line=`echo $f | $SED -e 's/^\///' | tr '/' ' '`
-        nwords=`echo $line | wc -w`
-        host=`echo $line | $CUT -d ' ' -f $(( nwords - 2 ))`
-        share=`echo $line | $CUT -d ' ' -f $(( nwords - 1 ))`
+        line=`$ECHO $f | $SED -e 's/^\///' | tr '/' ' '`
+        nwords=`$ECHO $line | $WC -w`
+        host=`$ECHO $line | $CUT -d ' ' -f $(( nwords - 2 ))`
+        share=`$ECHO $line | $CUT -d ' ' -f $(( nwords - 1 ))`
         if [ x$host != x$curHost ]; then
-            echo "$host"
+            $ECHO "$host"
             curHost=$host
         fi
-        if `echo $f | grep -q -v '_WIP$'`; then
+        if `$ECHO $f | $GREP -q -v '_WIP$'`; then
             $PRINTF "    %-25s " $share
-            echo `tail -1 $f | $SED -e 's/[^ ]*$//'`   #get last line of stats file and remove the trailing server/share
+            $ECHO `$TAIL -1 $f | $SED -e 's/[^ ]*$//'`   #get last line of stats file and remove the trailing server/share
         fi
-        if `echo $f | grep -q '_WIP$'`; then
+        if `$ECHO $f | $GREP -q '_WIP$'`; then
             $PRINTF "    %-15s %s\n" $share "FAILURE WIP file found: $f "
         fi
     done
 
     #show available space on dataset
-    echo =====
+    $ECHO =====
     case $SYSTEM_TYPE in
         linux)
-            dfResult=`df -h ${STORAGE_ROOT} | tail -1`
-            echo "Space = `echo ${dfResult} | $CUT -d ' ' -f 4` of `echo ${dfResult} | $CUT -d ' ' -f 2`"
+            dfResult=`df -h ${STORAGE_ROOT} | $TAIL -1`
+            $ECHO "Space = `$ECHO ${dfResult} | $CUT -d ' ' -f 4` of `$ECHO ${dfResult} | $CUT -d ' ' -f 2`"
             ;;
         bsd)
             $PRINTF "Space = %s of %s (cap: %s  dedup: %s)\n" `zpool list -Ho free  $ROOT_POOL` \
@@ -72,25 +72,25 @@ backupStatus () {
     local failureVM=0
     local failurePerm=0
     for f in $files; do
-        if [ -f "$f" ] && `tail -1 $f | grep -q FAIL` ; then
+        if [ -f "$f" ] && `$TAIL -1 $f | $GREP -q FAIL` ; then
             failureStatus=$(( failureStatus + 1 ))
         elif [ -d "$f" ]; then
             failureWip=$(( failureWip + 1 ))
-	elif [ -f "$f" ] && `tail -1 $f | grep -q "rc: 23"` ; then
+	elif [ -f "$f" ] && `$TAIL -1 $f | $GREP -q "rc: 23"` ; then
 	    failure23=$(( failure23 + 1 ))
-	elif [ -f "$f" ] && `tail -1 $f | grep -q "size: 2.0k"` ; then
+	elif [ -f "$f" ] && `$TAIL -1 $f | $GREP -q "size: 2.0k"` ; then
 	   failureVM=$(( failureVM + 1 ))
-	elif [ -f "$f" ] && `tail -1 $f | grep -q "rc: 1"` ; then
+	elif [ -f "$f" ] && `$TAIL -1 $f | $GREP -q "rc: 1"` ; then
            failurePerm=$(( failurePerm + 1 ))
         fi
     done
     if [ $((failureStatus + failureWip + failureVM + failure23 + failurePerm)) -gt 0 ]; then
-        echo =====
-        echo "Stat failures found = $failureStatus"
-        echo "WIP    failures found = $failureWip"
-	echo "VM     failures found = $failureVM"
-        echo "rc: 23 failures found = $failure23"
-	echo "Access failures found = $failurePerm"
+        $ECHO =====
+        $ECHO "Stat failures found = $failureStatus"
+        $ECHO "WIP    failures found = $failureWip"
+	$ECHO "VM     failures found = $failureVM"
+        $ECHO "rc: 23 failures found = $failure23"
+	$ECHO "Access failures found = $failurePerm"
 	exit 1
     fi
 }

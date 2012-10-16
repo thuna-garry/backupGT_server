@@ -80,13 +80,16 @@ parseOptions() {
     while getopts ":v" arg; do
         case $arg in
             v) VERBOSE="1" ;;
+            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               exit 1
+               ;;
             *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                printFullUsage 1>&2
                exit 1
                ;;
         esac
     done
-    shift $(( OPTIND - 1 ))
+    COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
 }
 
 
@@ -94,12 +97,12 @@ parseOptions() {
 # main
 ###############################################################################
 checkRunningUser
-parseOptions "$@"
+parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 # find all the job directories with a JOB_CONTROL file
 for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
     jobDir=${jobControlFile%/*}
-    [ "$VERBOSE" ] && echo "job dir: ${jobDir##*/}  ($jobDir)"
+    [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
 
     JOB_INTERVAL=1440      #set default 1 day
     JOB_RETRY_INTERVAL=60  #set default 1 hour
@@ -109,7 +112,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
     # find all the jobs in the current job directory
     for jobPath in `$FIND $jobDir -perm -0100 -type f -mindepth 1 -maxdepth 1`; do
         jobFile=${jobPath##*/}
-        [ "$VERBOSE" ] && echo "    job: $jobFile"
+        [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
 
         # if a custom job control file exists then source it
         [ -f "${jobPath}${JOB_CONTROL}" ] && . "${jobPath}${JOB_CONTROL}"
@@ -123,7 +126,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         esac
 	recentModList="`$FIND ${jobDir} -name ${jobFile}${JOB_MODLIST_SUFFIX} $findOp 2>/dev/null`"
         if [ -z "$recentModList" ]; then
-            [ "$VERBOSE" ] && echo "        ENQUEING (modlist missing or older than $JOB_INTERVAL min)"
+            [ "$VERBOSE" ] && $ECHO "        ENQUEING (modlist missing or older than $JOB_INTERVAL min)"
 #todo purge queues of any instances of this job
             "${BACKUPGT_ROOT}/bin/enqueue"     \
                 `[ "$VERBOSE" ] && $ECHO "-v"` \
@@ -138,37 +141,37 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         # now consider the modules
         #----------------
         $CAT $recentModList | while read modName modComment; do
-            [ "$VERBOSE" ] && echo '        mod: ' $modName
+            [ "$VERBOSE" ] && $ECHO '        mod: ' $modName
             statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
             statusPath="${statusDir}/${modName}"
-            statLine=`$SORT -n $statusPath 2>/dev/null | $TAIL -1`
+            statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
 
-            curState=`            echo "$statLine" | parseAssignment curState`
-            lastSuccessTimeStamp=`echo "$statLine" | parseAssignment lastSuccessTimeStamp`
-            lastFailureTimeStamp=`echo "$statLine" | parseAssignment lastFailureTimeStamp`
+            curState=`            $ECHO "$statLine" | parseAssignment curState`
+            lastSuccessTimeStamp=`$ECHO "$statLine" | parseAssignment lastSuccessTimeStamp`
+            lastFailureTimeStamp=`$ECHO "$statLine" | parseAssignment lastFailureTimeStamp`
             
             case x$curState in
                 xSUCCESS)
                     maxAge=`$EXPR $JOB_INTERVAL \* 60`
 		    needToQueue=`isTimeStampTooOld ${lastSuccessTimeStamp:-1} $maxAge`
                     if [ $needToQueue ]; then
-                        [ "$VERBOSE" ] && echo "            ENQUEUE: curState=$curState too old ($JOB_INTERVAL max age)"
+                        [ "$VERBOSE" ] && $ECHO "            ENQUEUE: curState=$curState too old ($JOB_INTERVAL max age)"
                     else
-                        [ "$VERBOSE" ] && echo "            curState=$curState sufficiently recent ($JOB_INTERVAL max age)"
+                        [ "$VERBOSE" ] && $ECHO "            curState=$curState sufficiently recent ($JOB_INTERVAL max age)"
                     fi
                     ;;
                 xFAILURE)
                     maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
 		    needToQueue=`isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge`
                     if [ $needToQueue ]; then
-                        [ "$VERBOSE" ] && echo "            ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
+                        [ "$VERBOSE" ] && $ECHO "            ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
                     else
-                        [ "$VERBOSE" ] && echo "            curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
+                        [ "$VERBOSE" ] && $ECHO "            curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
                     fi
                     ;;
                 *)
 		    needToQueue=0  #0=true   
-                    [ "$VERBOSE" ] && echo "            ENQUEUE: no prior state"
+                    [ "$VERBOSE" ] && $ECHO "            ENQUEUE: no prior stats"
                     ;;
             esac
         
@@ -180,7 +183,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
                     "-p" "$JOB_PRIORITY"           \
                     "--"
                 if [ $? -eq 100 ]; then
-                    [ "$VERBOSE" ] && echo '            attempted enqueue but job already queued'
+                    [ "$VERBOSE" ] && $ECHO '            attempted enqueue but job already queued'
                 fi
             fi
 

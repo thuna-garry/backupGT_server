@@ -98,15 +98,14 @@ parseOptions() {
                sOptionSupplied="1" ;;
             p) priority="${OPTARG}" ;;
             v) VERBOSE="1" ;;
-            :) echo "Option -${OPTARG} requires an argument." 1>&2
+            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
                exit 1
                ;;
-            *) echo "Option -${OPTARG} not recognized as a valid option." 1>&2
+            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                exit 1
                ;;
         esac
     done
-    shift $(( OPTIND - 1 ))
 
     [ -z "jobPath" ] && printFullUsage 
     jobDir=${jobPath%/*}
@@ -114,12 +113,10 @@ parseOptions() {
 
     [ -z "sOptionSupplied" ] && printFullUsage
 
-    priority=`echo $priority | grep "^[0-9][0-9]$"`
+    priority=`$ECHO $priority | grep "^[0-9][0-9]$"`
     priority=${priority:-50}
 
-    #if [ $# -eq 0 ]; then
-    #    printFullUsage
-    #fi
+    COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
 }
 
 
@@ -127,14 +124,14 @@ parseOptions() {
 # main
 ###############################################################################
 checkRunningUser
-parseOptions "$@"
+parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 # ensure that the queueDirectory exists
 $MKDIR -p $QUEUE_ROOT
 
 # create a candidate queue file and populate
 tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXX`
-[ "$VERBOSE" ] && $ECHO "        canadidate jobFile: $tmpPath"
+[ "$VERBOSE" ] && $ECHO "            canadidate jobFile: $tmpPath"
 
 $ECHO "jobDir:  $jobDir"   >> $tmpPath
 $ECHO "jobFile: $jobFile"  >> $tmpPath
@@ -147,9 +144,9 @@ if [ -z "$isDup" ]; then
     timeStamp=`$DATE -u +%s`
     qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName}_${crc}
     $MV $tmpPath $qjPath
-    [ "$VERBOSE" ] && $ECHO "        ENQUEUED as: $qjPath"
+    [ "$VERBOSE" ] && $ECHO "            ENQUEUED as: $qjPath"
 else
-    [ "$VERBOSE" ] && $ECHO "        job already queued as: ${isDup##*/}"
+    [ "$VERBOSE" ] && $ECHO "            job already queued as: ${isDup##*/}"
     $RM -f $tmpPath
     exit 100
 fi
