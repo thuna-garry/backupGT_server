@@ -1,8 +1,0 @@
-# number of minutes between rescheduling of jobs
-JOB_INTERVAL=1440
-
-# nubmer of mintues to wait before rescheduling failed jobs
-JOB_RETRY_INTERVAL=60
-
-# priority: 00=highest  99=lowest (default 50)
-JOB_PRIORITY=

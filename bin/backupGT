@@ -755,7 +755,7 @@ doModule_file () {
 
             # setup convenient symlinks to the newly completed backup
             $SUDO $RM -f ${modDir}/current
-            $LN -s `${newDir##*/}` ${modDir}/current
+            $LN -s ${newDir} ${modDir}/current
 
             # generate stats file
             case ${method} in
