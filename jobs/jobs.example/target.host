@@ -1,0 +1,26 @@
+#! /bin/sh
+
+bgtDir=/usr/local/backupGT_server
+jobName=${0##*/}
+
+export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+(printenv > ${bgtDir}/tmp/job.${jobName}.printenv)
+
+
+#############################################################
+# setup the backup
+#############################################################
+hostName=target.host
+hostType=ssh
+
+targetHost=10.11.12.13  #or $hostName if hostName is in DNS
+targetPort=22           #allow for non standard ssh port
+
+export SSH_HOST="$targetHost"
+export SSH_OPTS="-p $targetPort -l root -i ${bgtDir}/keys/backupGT.key"
+
+export RSYNC_HOST=$SSH_HOST
+export RSYNC_OPTS="-vi"
+
+# do the backup
+$bgtDir/bin/backupGT -h $hostName -t $hostType $* 
