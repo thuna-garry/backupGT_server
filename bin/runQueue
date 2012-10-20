@@ -205,13 +205,13 @@ statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}"
 statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
 if [ "$rc" -eq 0 ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) success - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curTimeStamp $(timeStamp2Date $timeStamp)`
+    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)z`
     statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $timeStamp`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)z`
 else
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) failure - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curTimeStamp $(timeStamp2Date $timeStamp)`
+    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)z`
     statLine=`$ECHO "$statLine" | makeAssignment curState FAILURE`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $timeStamp`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)z`

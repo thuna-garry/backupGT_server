@@ -1,71 +1,193 @@
 #! /usr/local/bin/bash
+###############################################################################
+# This script displays the most recent job and backup status
+#
+###############################################################################
 
 
 ###############################################################################
-# get user defined globals
+# include user defined globals and the common library
 ###############################################################################
 . ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
+
+# redefine $SUDO to include the configured user
+SUDO=""
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+fi
 
 
 ###############################################################################
-# routines for auditing the backups
+# globals
 ###############################################################################
-backupStatus () {
-    local targetHost="$1"
-    local files
-    for f0 in $STORAGE_ROOT/*; do
-        [ ! -d "$f0" ] && continue
-        [ "$targetHost" ] && [ "${f0##*/}" != "$targetHost" ] && continue
-        for f1 in $f0/*; do
-            [ ! -d "$f1" ] && continue
-            f2=$f1/stats
-            [ -f "$f2" ] && files="$files $f2"
-            f2=$f1/${f1##*/}_WIP
-            [ -d "$f2" ] && files="$files $f2"
+LAST_MODIFIED_DATE='2012-10-14'
+
+
+###############################################################################
+# process options
+###############################################################################
+printFullUsage() {
+    $ECHO "###############################################################################"
+    $ECHO "# showStatus (part of the backupGT suite)"
+    $ECHO "# Author: Garry Thuna"
+    $ECHO "# Created: 11/10/2009"
+    $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
+    $ECHO "###############################################################################"
+    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-u]"
+    $ECHO "   display status for backup jobs and target hosts"
+    $ECHO "Options:"
+    $ECHO "  -h    only print the stats for the named targetHost"
+    $ECHO "  -j    include the status for jobs"
+    $ECHO "  -t    include the status for target hosts"
+    $ECHO "  -u    include a summary for space utilization"
+    $ECHO "If neither -j, -t, or -u is specified all are assumed"
+    exit 1
+}
+
+
+printMiniUsage() {
+    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-u]"
+}
+
+
+SHOW_ALL=1
+SHOW_JOB_STATUS=0
+SHOW_HOST_STATUS=0
+SHOW_SPACE_UTIL=0
+parseOptions() {
+    while getopts ":h:jtu" arg; do
+        case $arg in
+            h) TARGET_HOST=${OPTARG};;
+            j) SHOW_JOB_STATUS=1  ;	SHOW_ALL=0 ;;
+            t) SHOW_HOST_STATUS=1 ;	SHOW_ALL=0 ;;
+            u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL=0 ;;
+            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               exit 1
+               ;;
+            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
+               printFullUsage 1>&2
+               exit 1
+               ;;
+        esac
+    done
+    COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
+}
+
+
+###############################################################################
+# status reporting routines
+###############################################################################
+jobControlStatus () {
+    local statusFile
+    local jobName
+    local jobPath
+
+    local jobStatusLine
+    local modStatusLine
+    local curState
+    local curDate
+
+    $ECHO "------------------------------------------------------------------------------"
+    $ECHO " Job Control Status/Results"
+    $ECHO "------------------------------------------------------------------------------"
+    $FIND $JOB_ROOT -type d -name '*.status' \
+    | while read statusDir; do
+        statusFile=${statusDir##*/}
+        jobName=${statusFile%.status}
+        jobPath=${statusDir%.status}
+
+        jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
+        curState=`$ECHO $jobStatusLine | parseAssignment curState`
+        curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
+        $ECHO $jobName $curState $curDate
+
+        ls $statusDir | while read modStatFile; do
+            [ "modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
+            modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
+            curState=`$ECHO $modStatusLine | parseAssignment curState`
+            curDate=` $ECHO $modStatusLine | parseAssignment curDate`
+            $PRINTF "    %-40s  %s  %s\n" "$modStatFile" "$curState" "$curDate"
         done
     done
+    $ECHO
+    $ECHO
+}
 
+
+targetHostStatus () {
+    local targetHost=$TARGET_HOST
+    local findRoot
+    local findDepth
+
+    local itemFound
+    local modDir
+    local modName
+    local hostDir
+    local hostName
     local curHost
-    local host
-    local share
-    local nwords
-    local line
-    for f in $files; do
-        line=`$ECHO $f | $SED -e 's/^\///' | tr '/' ' '`
-        nwords=`$ECHO $line | $WC -w`
-        host=`$ECHO $line | $CUT -d ' ' -f $(( nwords - 2 ))`
-        share=`$ECHO $line | $CUT -d ' ' -f $(( nwords - 1 ))`
-        if [ x$host != x$curHost ]; then
-            $ECHO "$host"
-            curHost=$host
+
+    $ECHO "------------------------------------------------------------------------------"
+    $ECHO " Host (target) Backup Status/Results"
+    $ECHO "------------------------------------------------------------------------------"
+
+    if [ -z "$targetHost" ]; then
+        findRoot=$STORAGE_ROOT
+        findDepth=3
+    else
+        findRoot=$STORAGE_ROOT/$targetHost
+        findDepth=2
+    fi
+    
+    curHost=
+    $FIND $findRoot -maxdepth $findDepth -name 'status' -or -name '*_WIP' | sort \
+    | while read f; do
+        itemFound=${f##*/}
+        modDir=${f%/*}
+        modName=${modDir##*/}
+        hostDir=${modDir%/*}
+        hostName=${hostDir##*/}
+
+        if [ x"$hostName" != x"$curHost" ]; then
+            $ECHO "$hostName"
+            curHost=$hostName
         fi
-        if `$ECHO $f | $GREP -q -v '_WIP$'`; then
-            $PRINTF "    %-25s " $share
-            $ECHO `$TAIL -1 $f | $SED -e 's/[^ ]*$//'`   #get last line of stats file and remove the trailing server/share
-        fi
-        if `$ECHO $f | $GREP -q '_WIP$'`; then
-            $PRINTF "    %-15s %s\n" $share "FAILURE WIP file found: $f "
+        if [ "$itemFound" = 'status' ]; then
+            $PRINTF "    %-25s " $modName
+            $ECHO `$TAIL -1 $f | $SED -e 's/[^ ]*$//'`   #get last line of stats file and remove the trailing server/mod
+        else
+            $PRINTF "    %-15s %s %s\n" "$modName" "FAILURE WIP found:" "$f"
         fi
     done
+    $ECHO
+    $ECHO
+}
 
-    #show available space on dataset
-    $ECHO =====
+
+spaceUtilization () {
+    $ECHO "------------------------------------------------------------------------------"
+    $ECHO " `hostname` Space Utilization"
+    $ECHO "------------------------------------------------------------------------------"
+
     case $SYSTEM_TYPE in
         linux)
             dfResult=`df -h ${STORAGE_ROOT} | $TAIL -1`
             $ECHO "Space = `$ECHO ${dfResult} | $CUT -d ' ' -f 4` of `$ECHO ${dfResult} | $CUT -d ' ' -f 2`"
             ;;
         bsd)
-            $PRINTF "Space = %s of %s (cap: %s  dedup: %s)\n" `zpool list -Ho free  $ROOT_POOL` \
-                                                              `zpool list -Ho size  $ROOT_POOL` \
-                                                              `zpool list -Ho cap   $ROOT_POOL` \
-                                                              `zpool list -Ho dedup $ROOT_POOL`
+            $PRINTF "Space = %s of %s (cap: %s  dedup: %s)\n" `$ZPOOL list -Ho free  $ROOT_POOL` \
+                                                              `$ZPOOL list -Ho size  $ROOT_POOL` \
+                                                              `$ZPOOL list -Ho cap   $ROOT_POOL` \
+                                                              `$ZPOOL list -Ho dedup $ROOT_POOL`
             ;;
     esac
+    $ECHO
+    $ECHO
+}
 
 
-
-    #show errors logged to stats files
+errorSummary () {
+#todo
     local failureStatus=0
     local failureWip=0
     local failure23=0
@@ -93,15 +215,22 @@ backupStatus () {
 	$ECHO "Access failures found = $failurePerm"
 	exit 1
     fi
+    $ECHO
+    $ECHO
 }
 
 
 ###############################################################################
 # main
 ###############################################################################
+checkRunningUser
+parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
+
 case ${0##*/} in      #see how we are called
     showStatus)
-        backupStatus $*
+        [ "$SHOW_ALL" = 1 -o "$SHOW_JOB_STATUS"  = 1 ] && jobControlStatus $*
+        [ "$SHOW_ALL" = 1 -o "$SHOW_HOST_STATUS" = 1 ] && targetHostStatus $*
+        [ "$SHOW_ALL" = 1 -o "$SHOW_SPACE_UTIL"  = 1 ] && spaceUtilization $*
         ;;
 esac
 
