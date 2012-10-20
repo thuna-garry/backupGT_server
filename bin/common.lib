@@ -1,39 +1,40 @@
 ################################################################################
 # shared application globals
 ################################################################################
+DATE_FORMAT="%Y.%m.%d-%H%M%S"
+TS_FORMAT="%s"
 
 JOB_STATUS_DIR_SUFFIX=".status"
-
 #-------------------------------------------------------
 # variables used in job control status files are:
 #   curTimeStamp           in UTC seconds since epoch
 #   curState               SUCCESS, FAILURE
 #   lastSuccessTimeStamp   in UTC seconds since epoch
 #   lastFailureTimeStamp   in UTC seconds since epoch
-#   lastSuccessDate        in UTC +%Y%m%d_%H%M%Sz format
-#   lastFailureDate        in UTC +%Y%m%d_%H%M%Sz format
+#   lastSuccessDate        in UTC +${DATE_FORMAT}z format
+#   lastFailureDate        in UTC +${DATE_FORMAT}z format
 #-------------------------------------------------------
-
 JOB_MODLIST_SUFFIX=".modList"
 JOB_MODLIST_STATUS="%modList"
+
 
 
 ################################################################################
 # shared shell functions
 ################################################################################
 timeStamp2Date() {
-    local ts=$1
+    local ts=${1%z}
     case $SYSTEM_TYPE in
-        linux) $DATE -d  @${ts} +%Y%m%d_%H%M%S ;;
-        bsd)   $DATE -jf %s ${ts} +%Y%m%d_%H%M%S ;;
+        linux) $DATE -d  @${ts}   +${DATE_FORMAT}z ;;
+        bsd)   $DATE -jf %s ${ts} +${DATE_FORMAT}z ;;
     esac
 }
 
 date2timeStamp() {
-    local date=$1
+    local date=${1%z}
     case $SYSTEM_TYPE in
         linux) ;;  #todo
-        bsd)   $DATE -jf %Y%m%d_%H%M%S ${date} +%s ;;
+        bsd)   $DATE -jf +${DATE_FORMAT} ${date} +%s ;;
     esac
 }
 
@@ -102,13 +103,32 @@ isTimeStampTooOld () {
     # given an event timestamp (in UTC seconds since epoch) determine if it is older
     # than the specified maxAge
     #-------------
-    local eventTs=$1
+    local eventTs=${1%z}
     local maxAge=$2
 
-    curTs=`$DATE -u +%s`
+    curTs=`$DATE -u +${TS_FORMAT}`
     elapsed=`$EXPR $curTs - $eventTs`
     [ "$elapsed" -gt "$maxAge" ] && return 0 || return 1
 }
+
+
+###############################################################################
+# terminal decorations
+###############################################################################
+if [ -t 1 ]; then
+    NORMAL="`tput sgr0`"
+    RED="`tput setaf 1`"
+    GREEN="`tput setaf 2`"
+    YELLOW="`tput setaf 3`"
+    BLUE="`tput setaf 4`"
+    MAGENTA="`tput setaf 5`"
+    CYAN="`tput setaf 6`"
+    WHITE="`tput setaf 7`"
+    BOLD="`tput bold`"
+    REVERSE="`tput rev`"
+    ULINE="`tput smul`"
+fi
+
 
 
 ################################################################################

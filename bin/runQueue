@@ -23,7 +23,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012-10-14'
+LAST_MODIFIED_DATE='2012.10.14'
 
 
 ###############################################################################
@@ -125,7 +125,7 @@ fi
 #----------------
 # create a mutex in the queue (mark with a timestamp)
 #----------------
-timeStamp=`$DATE -u +%s`
+timeStamp=`$DATE -u +${TS_FORMAT}`
 thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXX`
 $ECHO "$$" > $thisMutex
 $SLEEP 1
@@ -205,16 +205,16 @@ statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}"
 statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
 if [ "$rc" -eq 0 ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) success - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)z`
+    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
     statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $timeStamp`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)z`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)`
 else
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) failure - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)z`
+    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
     statLine=`$ECHO "$statLine" | makeAssignment curState FAILURE`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $timeStamp`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)z`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)`
 fi
 $MKDIR -p $statusDir    #ensure that the job status dir exists
 $ECHO "$statLine" >> $statusPath

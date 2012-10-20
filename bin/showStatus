@@ -21,7 +21,10 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012-10-14'
+LAST_MODIFIED_DATE='2012.10.14'
+
+CUR_DATE=`$DATE -u +${DATE_FORMAT%%-*}`
+SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED 's/ /-/g'`
 
 
 ###############################################################################
@@ -41,6 +44,7 @@ printFullUsage() {
     $ECHO "  -j    include the status for jobs"
     $ECHO "  -t    include the status for target hosts"
     $ECHO "  -u    include a summary for space utilization"
+    $ECHO "  -H    scripted mode do not display any headers, footers or other decoration"
     $ECHO "If neither -j, -t, or -u is specified all are assumed"
     exit 1
 }
@@ -52,16 +56,18 @@ printMiniUsage() {
 
 
 SHOW_ALL=1
-SHOW_JOB_STATUS=0
-SHOW_HOST_STATUS=0
-SHOW_SPACE_UTIL=0
+SHOW_JOB_STATUS=
+SHOW_HOST_STATUS=
+SHOW_SPACE_UTIL=
+SCRIPTED_MODE=
 parseOptions() {
-    while getopts ":h:jtu" arg; do
+    while getopts ":h:jtuH" arg; do
         case $arg in
             h) TARGET_HOST=${OPTARG};;
-            j) SHOW_JOB_STATUS=1  ;	SHOW_ALL=0 ;;
-            t) SHOW_HOST_STATUS=1 ;	SHOW_ALL=0 ;;
-            u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL=0 ;;
+            j) SHOW_JOB_STATUS=1  ;	SHOW_ALL= ;;
+            t) SHOW_HOST_STATUS=1 ;	SHOW_ALL= ;;
+            u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
+            H) SCRIPTED_MODE=1  ;	SHOW_ALL= ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
                exit 1
                ;;
@@ -78,6 +84,25 @@ parseOptions() {
 ###############################################################################
 # status reporting routines
 ###############################################################################
+isJobSuspect () {
+    local status=$1
+    local statDate=$2
+ 
+    # get the age of the status entry
+    statDate=${statDate%%-*}  # correct format
+    statDate=${statDate%%_*}  # old format
+    statDate=${statDate//\./}
+    local elapsed=$(( ${CUR_DATE//\./} - statDate ))
+
+    # return the isSuspect string
+    if [ "$status" = "FAILURE" -o "$elapsed" -gt 1  ]; then
+        $ECHO "!!"
+    else
+        $ECHO "  "
+    fi
+}
+
+
 jobControlStatus () {
     local statusFile
     local jobName
@@ -88,10 +113,17 @@ jobControlStatus () {
     local curState
     local curDate
 
-    $ECHO "------------------------------------------------------------------------------"
-    $ECHO " Job Control Status/Results"
-    $ECHO "------------------------------------------------------------------------------"
-    $FIND $JOB_ROOT -type d -name '*.status' \
+    local findName
+    if [ -z "$TARGET_HOST" ]; then
+        findName='*.status'
+    else
+        findName=${TARGET_HOST}".status"
+    fi
+
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    [ "$SCRIPTED_MODE" ] || $ECHO "- Job Control Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    $FIND $JOB_ROOT -type d -name $findName \
     | while read statusDir; do
         statusFile=${statusDir##*/}
         jobName=${statusFile%.status}
@@ -100,23 +132,60 @@ jobControlStatus () {
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
         curState=`$ECHO $jobStatusLine | parseAssignment curState`
         curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
-        $ECHO $jobName $curState $curDate
+        $PRINTF "%-40s      %s %s %s\n" "$jobName" "`isJobSuspect $curState $curDate`" "$curState" "$curDate"
 
         ls $statusDir | while read modStatFile; do
             [ "modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
             modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
-            curState=`$ECHO $modStatusLine | parseAssignment curState`
+            curState=`$ECHO $jobStatusLine | parseAssignment curState`
             curDate=` $ECHO $modStatusLine | parseAssignment curDate`
-            $PRINTF "    %-40s  %s  %s\n" "$modStatFile" "$curState" "$curDate"
+            $PRINTF "    %-40s  %s %s %s\n" "$modStatFile" "`isJobSuspect $curState $curDate`" "$curState" "$curDate"
         done
     done
-    $ECHO
-    $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+}
+
+
+isModSuspect () {
+    local statLine=$*
+ 
+    # convert from old format
+    if $ECHO "$statLine" | $GREP -q '^[2]'; then
+        statLine="curDate=$statLine"
+        statLine=${statLine/[files: /files=}
+        statLine=${statLine/[MBytes: /MBytes=}
+        statLine=${statLine/[listGen: /listGen=}
+        statLine=${statLine/[totTime: /totTime=}
+        statLine=${statLine/[rc: /rc=}
+        if $ECHO "$statLine" | $GREP -q 'rc=0'; then
+            statLine=`$ECHO $statLine | makeAssignment curState SUCCESS`
+        else
+            statLine=`$ECHO $statLine | makeAssignment curState FAILURE`
+        fi
+    fi
+
+    # get the age of the status entry
+    local statDate=`$ECHO $statLine | parseAssignment curDate`
+    statDate=${statDate%%-*}  # correct format
+    statDate=${statDate%%_*}  # old format
+    statDate=${statDate//\./}
+    local elapsed=$(( ${CUR_DATE//\./} - statDate ))
+
+    # get the status
+    local status=`$ECHO $statLine | parseAssignment curState`
+
+    # return the isSuspect string
+    local status=`$ECHO $statLine | parseAssignment curState`
+    if [ "$status" = "FAILURE" -o "$elapsed" -gt 1  ]; then
+        $PRINTF "!!"
+    else
+        $PRINTF "  "
+    fi
 }
 
 
 targetHostStatus () {
-    local targetHost=$TARGET_HOST
     local findRoot
     local findDepth
 
@@ -126,16 +195,17 @@ targetHostStatus () {
     local hostDir
     local hostName
     local curHost
+    local lastLine
 
-    $ECHO "------------------------------------------------------------------------------"
-    $ECHO " Host (target) Backup Status/Results"
-    $ECHO "------------------------------------------------------------------------------"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    [ "$SCRIPTED_MODE" ] || $ECHO "- Host (target) Backup Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
-    if [ -z "$targetHost" ]; then
+    if [ -z "$TARGET_HOST" ]; then
         findRoot=$STORAGE_ROOT
         findDepth=3
     else
-        findRoot=$STORAGE_ROOT/$targetHost
+        findRoot=$STORAGE_ROOT/$TARGET_HOST
         findDepth=2
     fi
     
@@ -153,21 +223,21 @@ targetHostStatus () {
             curHost=$hostName
         fi
         if [ "$itemFound" = 'status' ]; then
-            $PRINTF "    %-25s " $modName
-            $ECHO `$TAIL -1 $f | $SED -e 's/[^ ]*$//'`   #get last line of stats file and remove the trailing server/mod
+            lastLine=`$TAIL -1 $f`
+            $PRINTF "    %-25s %s %s %s\n" "$modName" "`isModSuspect $lastLine`" "$lastLine"
         else
-            $PRINTF "    %-15s %s %s\n" "$modName" "FAILURE WIP found:" "$f"
+            $PRINTF "    %-25s !! %s %s\n" "$modName" "FAILURE WIP found:" "$f"
         fi
     done
-    $ECHO
-    $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
 }
 
 
 spaceUtilization () {
-    $ECHO "------------------------------------------------------------------------------"
-    $ECHO " `hostname` Space Utilization"
-    $ECHO "------------------------------------------------------------------------------"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    [ "$SCRIPTED_MODE" ] || $ECHO "- `$HOSTNAME` Space Utilization"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     case $SYSTEM_TYPE in
         linux)
@@ -181,8 +251,8 @@ spaceUtilization () {
                                                               `$ZPOOL list -Ho dedup $ROOT_POOL`
             ;;
     esac
-    $ECHO
-    $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
 }
 
 
@@ -215,8 +285,8 @@ errorSummary () {
 	$ECHO "Access failures found = $failurePerm"
 	exit 1
     fi
-    $ECHO
-    $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
 }
 
 
@@ -228,9 +298,9 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 case ${0##*/} in      #see how we are called
     showStatus)
-        [ "$SHOW_ALL" = 1 -o "$SHOW_JOB_STATUS"  = 1 ] && jobControlStatus $*
-        [ "$SHOW_ALL" = 1 -o "$SHOW_HOST_STATUS" = 1 ] && targetHostStatus $*
-        [ "$SHOW_ALL" = 1 -o "$SHOW_SPACE_UTIL"  = 1 ] && spaceUtilization $*
+        [ "$SHOW_ALL" -o "$SHOW_JOB_STATUS"  ] && jobControlStatus $*
+        [ "$SHOW_ALL" -o "$SHOW_HOST_STATUS" ] && targetHostStatus $*
+        [ "$SHOW_ALL" -o "$SHOW_SPACE_UTIL"  ] && spaceUtilization $*
         ;;
 esac
 

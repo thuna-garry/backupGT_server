@@ -57,7 +57,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012-10-14'
+LAST_MODIFIED_DATE='2012.10.14'
 
 
 ###############################################################################
@@ -141,7 +141,7 @@ $ECHO "modName: $modName"  >> $tmpPath
 crc=`$CKSUM $tmpPath | $SED 's/^\([[:alnum:]]*\).*/\1/'`
 isDup=`$FIND $QUEUE_ROOT -type f -name qj_\*_$crc`
 if [ -z "$isDup" ]; then
-    timeStamp=`$DATE -u +%s`
+    timeStamp=`$DATE -u +${TS_FORMAT}z`
     qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
     $MV $tmpPath $qjPath
     [ "$VERBOSE" ] && $ECHO "            ENQUEUED as: $qjPath"
