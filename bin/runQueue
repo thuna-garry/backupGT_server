@@ -23,7 +23,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012.10.14'
+LAST_MODIFIED_DATE='2012.10.21'
 
 
 ###############################################################################
@@ -97,6 +97,9 @@ parseOptions() {
 checkRunningUser
 parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
+[ "$VERBOSE" ] && $ECHO 
+[ "$VERBOSE" ] && $ECHO 
+
 case "$#" in
     0) for qrNum in `$SEQ $QUEUE_RUNNERS`; do
            [ "$VERBOSE" ] && $ECHO "${0}: spawning queueRunner $qrNum"
@@ -112,6 +115,7 @@ case "$#" in
        ;;
 esac
 
+
 #----------------
 # check that the queueDir exists
 #----------------
@@ -125,7 +129,7 @@ fi
 #----------------
 # create a mutex in the queue (mark with a timestamp)
 #----------------
-timeStamp=`$DATE -u +${TS_FORMAT}`
+timeStamp=`$DATE -u +${TS_FORMAT}z`
 thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXX`
 $ECHO "$$" > $thisMutex
 $SLEEP 1
@@ -154,6 +158,18 @@ done
 
 
 #----------------
+# we have control so remove any hung/failed jobs that were being run
+# by a previous queueRunner with the same qrNum
+#----------------
+$RM -f $queueDir/mx_${qrNum}_*
+cleanup () {
+    $RM -f $queueDir/mx_${qrNum}_*
+    $RM -f $thisMutex
+}
+trap cleanup SIGHUP SIGINT SIGQUIT SIGTERM
+
+
+#----------------
 # get the head of the queue
 #----------------
 firstQueuedJobPath=`$LS $queueDir/qj_* 2>/dev/null | $HEAD -1`
@@ -171,7 +187,7 @@ fi
 mxqj="$queueDir/mx_${qrNum}_${firstQueuedJobPath##*/}"
 $MV "$firstQueuedJobPath" "$mxqj" 2>/dev/null
 if [ ! -f "$mxqj" ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) competing queue runnerqueue took head; restarting"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) competing queue runner took head; restarting"
     $RM -f $thisMutex
     exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
 fi
@@ -201,30 +217,38 @@ fi
 # append a status entry to the status file
 #----------------
 statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
-statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}"
+statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}" 
 statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
+lastSuccessDate=`     $ECHO "$statLine" | parseAssignment lastSuccessDate`
+lastSuccessTimeStamp=`$ECHO "$statLine" | parseAssignment lastSuccessTimeStamp`
+lastFailureDate=`     $ECHO "$statLine" | parseAssignment lastFailureDate`
+lastFailureTimeStamp=`$ECHO "$statLine" | parseAssignment lastFailureTimeStamp`
+statLine=`$ECHO "$timeStamp" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
 if [ "$rc" -eq 0 ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) success - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
     statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $(timeStamp2Date $timeStamp)`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $timeStamp`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $(timeStamp2Date $timeStamp)`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $lastFailureDate`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $lastFailureTimeStamp`
 else
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) failure - updating status"
     statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
     statLine=`$ECHO "$statLine" | makeAssignment curState FAILURE`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $lastSuccessDate`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $lastSuccessTimeStamp`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $(timeStamp2Date $timeStamp)`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $timeStamp`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $(timeStamp2Date $timeStamp)`
 fi
 $MKDIR -p $statusDir    #ensure that the job status dir exists
 $ECHO "$statLine" >> $statusPath
 
- 
+
 #----------------
 # dequeue completed job and cleanup
 #----------------
-$RM -f $mxqj
-$RM -f $thisMutex
+cleanup
+trap -
 
 
 #----------------
