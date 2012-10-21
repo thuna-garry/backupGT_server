@@ -1,6 +1,8 @@
 #! /bin/sh
 
 bgtDir=/usr/local/backupGT_server
+jobFile=`readlink -f $0`
+jobDir=${0/*}
 jobName=${0##*/}
 
 export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
@@ -9,10 +11,9 @@ export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/loca
 #############################################################
 # setup the backup
 #############################################################
-hostName=target.host           #or $jobName if jobs are named same as the target host
-hostType=ssh
+hostName=target.host           #or $jobName if job file is named after its target host
 
-targetHost=10.11.12.13         #or $hostName if hostName is in DNS
+targetHost=10.11.12.13         #not needed if $hostName is in DNS
 targetPort=22                  #allow for non standard ssh port
 
 export SSH_HOST="$targetHost"  #or ${hostName}.example.com
@@ -21,6 +22,9 @@ export SSH_OPTS="-p $targetPort -l root -i ${bgtDir}/keys/backupGT.key"
 export RSYNC_HOST="$SSH_HOST"
 export RSYNC_OPTS="-vi"
 
+export TAR_OPTS=""
+
 # do the backup
-(printenv > ${bgtDir}/tmp/job.${jobName}.printenv)   #grab a copy of env for debug
-$bgtDir/bin/backupGT -h $hostName -t $hostType $* 
+( printenv > ${jobFile}.printenv )   #save a copy of env for debug
+$bgtDir/bin/backupGT -h $hostName -t ssh $* 
+
