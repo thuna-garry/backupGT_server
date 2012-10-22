@@ -741,7 +741,7 @@ doModule_file () {
             {
                 $ECHO "==============================================================================" 
                 $ECHO "= Backup for $SRC_NAME/$MODULE completed successfully at `$DATE_CMD`"
-                $ECHO "=     return code = $rc"
+                $ECHO "=     return code = $rcDetail"
                 [ "$method" = rsync ] && $ECHO "=     description = `rsyncErrorCode $rcDetail`"
                 $ECHO "=     duration = $elapsedMin minutes"
                 $ECHO "=============================================================================="
@@ -757,7 +757,7 @@ doModule_file () {
             $SUDO $RM -f ${modDir}/current
             $LN -s ${newDir} ${modDir}/current
 
-            # generate stats file
+            # generate status file
             case ${method} in
                 rsync)
                     {
@@ -781,27 +781,27 @@ doModule_file () {
                                                | $GREP "File list generation time:" \
                                                | $AWK '{print $5}' \
                                                | $CUT -d '.' -f 1 `
-                        $PRINTF "%s [%s] [%s] [%s] [%s] [%s] %s/%s\n" \
+                        $PRINTF "%s %s %s %s %s %s %s/%s\n" \
                                    $timeStamp \
-                                   "`$PRINTF 'files: %d/%d'    $stat_fileSent $stat_fileNum `" \
-                                   "`$PRINTF 'MBytes: %d/%d'   $(( stat_sizeSent / 1048576 )) $(( stat_sizeTot / 1048576 )) `" \
-                                   "`$PRINTF 'listGen: %d'     $(( stat_listGenTime / 60 )) `" \
-                                   "`$PRINTF 'totTime: %d'     $elapsedMin `" \
-                                   "`$PRINTF 'rc: %d'          $rcDetail `" \
+                                   "`$PRINTF 'files=%d/%d'    $stat_fileSent $stat_fileNum `" \
+                                   "`$PRINTF 'MBytes=%d/%d'   $(( stat_sizeSent / 1048576 )) $(( stat_sizeTot / 1048576 )) `" \
+                                   "`$PRINTF 'listGen=%d'     $(( stat_listGenTime / 60 )) `" \
+                                   "`$PRINTF 'totTime=%d'     $elapsedMin `" \
+                                   "`$PRINTF 'rc=%d'          $rcDetail `" \
                                    $SRC_NAME $MODULE
-                    } >> ${modDir}/stats
+                    } >> "${modDir}/status"
                     ;;
 
                 tar)
                     {
-                        $PRINTF "%s [%s] [%s] [%s] [%s] %s/%s\n" \
+                        $PRINTF "%s %s %s %s %s %s/%s\n" \
                                    $timeStamp \
-                                   "`$PRINTF 'files: %d'       $( $GREP '^x ' ${newLog} | wc -l ) `" \
-                                   "`$PRINTF 'size: %s'        $( $DU -sh ${newDir} | $AWK '{print $1}' ) `" \
-                                   "`$PRINTF 'totTime: %d'     $elapsedMin `" \
-                                   "`$PRINTF 'rc: %d'          $rcDetail `" \
+                                   "`$PRINTF 'files=%d'       $( $GREP '^x ' ${newLog} | wc -l ) `" \
+                                   "`$PRINTF 'size=%s'        $( $DU -sh ${newDir} | $AWK '{print $1}' ) `" \
+                                   "`$PRINTF 'totTime=%d'     $elapsedMin `" \
+                                   "`$PRINTF 'rc=%d'          $rcDetail `" \
                                    $SRC_NAME $MODULE
-                    } >> ${modDir}/stats
+                    } >> "${modDir}/status"
                     ;;
             esac
             rcReturn=0
@@ -830,14 +830,14 @@ doModule_file () {
                 $ECHO "pruning aborted due to previous errors"
             } | $TEE -a $workLog 1>&2
 
-            # generate stats file
+            # generate status file
             {
-                $PRINTF "%s  FAILED  [%s] [%s] %s/%s\n" \
+                $PRINTF "%s  FAILED  %s %s %s/%s\n" \
                            $timeStamp \
-                           "`$PRINTF 'rcDetail: %d'          $rcDetail `" \
-                           "`$PRINTF 'totTime: %d min' $elapsedMin `" \
+                           "`$PRINTF 'totTime=%d'     $elapsedMin `" \
+                           "`$PRINTF 'rc=%d'          $rcDetail `" \
                            $SRC_NAME $MODULE
-            } >> ${modDir}/stats
+            } >> "${modDir}/status"
             rcReturn=$rcDetial
             ;;
     esac
