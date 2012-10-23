@@ -72,7 +72,10 @@ printFullUsage() {
     $ECHO "###############################################################################"
     $ECHO "Usage: $0 -j <jobPath> -s <modName> [-p <priority>] [-v]"
     $ECHO "Options:"
-    $ECHO "   -j <jobPath>   The canonical path to the executable job file"
+    $ECHO "   -j <jobPath>   The canonical path to the executable job file.  If the jobPath"
+    $ECHO "                  does not begin with a '/' then it is assumed to be a path"
+    $ECHO "                  relative to JOB_ROOT ('$JOB_ROOT/'"
+    $ECHO "                  will be prepended)"
     $ECHO "   -s <modName>   The module name to run the job for.  Athough this parameter"
     $ECHO "                  must be supplied it can be an emply string to indicated that"
     $ECHO "                  the job will be run to retrieve the module list from the"
@@ -94,8 +97,7 @@ parseOptions() {
     while getopts ":j:s:p:v" arg; do
         case $arg in
             j) jobPath="${OPTARG}" ;;
-            s) modName="${OPTARG}"
-               sOptionSupplied="1" ;;
+            s) modName="${OPTARG}";  sOptionSupplied="1" ;;
             p) priority="${OPTARG}" ;;
             v) VERBOSE="1" ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
@@ -107,11 +109,12 @@ parseOptions() {
         esac
     done
 
-    [ -z "jobPath" ] && printFullUsage 
+    [ -z "$jobPath" ] && printFullUsage 
+    [ "${jobPath:0:1}" != "/" ] && jobPath=${JOB_PATH}/${jobPath}
     jobDir=${jobPath%/*}
     jobFile=${jobPath##*/}
 
-    [ -z "sOptionSupplied" ] && printFullUsage
+    [ -z "$sOptionSupplied" ] && printFullUsage
 
     priority=`$ECHO $priority | grep "^[0-9][0-9]$"`
     priority=${priority:-50}
@@ -133,12 +136,13 @@ $MKDIR -p $QUEUE_ROOT
 tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXX`
 [ "$VERBOSE" ] && $ECHO "            canadidate jobFile: $tmpPath"
 
-$ECHO "jobDir:  $jobDir"   >> $tmpPath
-$ECHO "jobFile: $jobFile"  >> $tmpPath
-$ECHO "modName: $modName"  >> $tmpPath
+$ECHO jobDir:   $jobDir   >> $tmpPath
+$ECHO jobFile:  $jobFile  >> $tmpPath
+$ECHO modName:  $modName  >> $tmpPath
+$ECHO jobParms: "$@"      >> $tmpPath
 
 # check that the candidate file is not a duplicate of an already queued job
-crc=`$CKSUM $tmpPath | $SED 's/^\([[:alnum:]]*\).*/\1/'`
+crc=`$CKSUM $tmpPath | $SED -e 's/^\([[:alnum:]]*\).*/\1/'`
 isDup=`$FIND $QUEUE_ROOT -type f -name qj_\*_$crc`
 if [ -z "$isDup" ]; then
     timeStamp=`$DATE -u +${TS_FORMAT}z`

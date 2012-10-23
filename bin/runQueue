@@ -166,7 +166,7 @@ cleanup () {
     $RM -f $queueDir/mx_${qrNum}_*
     $RM -f $thisMutex
 }
-trap cleanup SIGHUP SIGINT SIGQUIT SIGTERM
+trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 
 
 #----------------
@@ -197,18 +197,31 @@ fi
 #----------------
 # now we have a queue entry so run it
 #----------------
-jobDir=` $AWK '/^jobDir:/  {print $2}' "${mxqj}"`
-jobFile=`$AWK '/^jobFile:/ {print $2}' "${mxqj}"`
-modName=`$AWK '/^modName:/ {print $2}' "${mxqj}"`
+jobDir=`  $SED -n -e '/^jobDir:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+jobFile=` $SED -n -e '/^jobFile:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+modName=` $SED -n -e '/^modName:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+jobParms=`$SED -n -e '/^jobParms:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 if [ -z "$modName" ]; then
+    modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
-        ${jobDir}/${jobFile} -j ${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
-    ${jobDir}/${jobFile} -j ${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
+        ${jobDir}/${jobFile} -j ${modListPath} $jobParms
+    ${jobDir}/${jobFile} -j ${modListPath} $jobParms
     rc=$?
+
+    if [ $rc -eq 0 ]; then
+        #if we were sucessful then we need to save any jobParms 
+        i=0
+        for parm in $jobParms; do
+            i=$(( i + 1 ))
+            parmString="$parmString parm${i}=${parm}"
+        done
+        parmString="parmCount=${i} $parmString" 
+        $SED -i -e "s/$/ ${parmString}/" ${modListPath}
+    fi
 else
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
-        ${jobDir}/${jobFile} -s "$modName"
-    ${jobDir}/${jobFile} -s "$modName"
+        ${jobDir}/${jobFile} -s "$modName" $jobParms
+    ${jobDir}/${jobFile} -s "$modName" $jobParms
     rc=$?
 fi
 
@@ -248,7 +261,7 @@ $ECHO "$statLine" >> $statusPath
 # dequeue completed job and cleanup
 #----------------
 cleanup
-trap -
+trap - 0 SIGHUP SIGINT SIGQUIT SIGTERM
 
 
 #----------------

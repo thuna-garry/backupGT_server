@@ -661,7 +661,7 @@ doModule_file () {
             if [ ! "$targetKeySpec" ]; then
                 local sshOpts=$SSH_OPTS
             else
-                local sshOpts=`$ECHO $SSH_OPTS | $SED "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
+                local sshOpts=`$ECHO $SSH_OPTS | $SED -e "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
@@ -699,7 +699,7 @@ doModule_file () {
             if [ ! "$targetKeySpec" ]; then
                 local sshOpts=$SSH_OPTS
             else
-                local sshOpts=`$ECHO $SSH_OPTS | $SED "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
+                local sshOpts=`$ECHO $SSH_OPTS | $SED -e "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
@@ -1020,7 +1020,7 @@ pruneOldBackups () {
         return
     fi
 
-    for dir in `$LS -dr ${baseName}*_${RETENSION_TYPE} 2>/dev/null | $SED "$sedPattern"`; do
+    for dir in `$LS -dr ${baseName}*_${RETENSION_TYPE} 2>/dev/null | $SED -e "$sedPattern"`; do
         $ECHO "  pruning $dir"
         $NICE $SUDO $RM -rf $dir
         $NICE $SUDO $RM -rf $dir.log

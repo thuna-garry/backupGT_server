@@ -24,7 +24,7 @@ fi
 LAST_MODIFIED_DATE='2012.10.14'
 
 CUR_DATE=`$DATE -u +${DATE_FORMAT%%-*}`
-SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED 's/ /-/g'`
+SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED -e 's/ /-/g'`
 
 
 ###############################################################################

@@ -145,13 +145,14 @@ needToQueue () {
 callEnqueue () {
     local jobPath="$1"
     local modName="$2"
+    shift 2
 
     ${BACKUPGT_ROOT}/bin/enqueue       \
         `[ "$VERBOSE" ] && $ECHO "-v"` \
         "-j" "$jobPath"                \
         "-s" "$modName"                \
         "-p" "$JOB_PRIORITY"           \
-        "--"
+        "--" $*
     if [ $? -eq 100 ]; then
         [ "$VERBOSE" ] && $ECHO '          . attempted enqueue but job already queued'
     fi
@@ -186,8 +187,8 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         #----------------
         # consider the job file itself
         #----------------
-        if needToQueue "${jobPath}" "${JOB_MODLIST_STATUS}"; then
-            callEnqueue "${jobPath}" ""
+        if needToQueue "$jobPath" "$JOB_MODLIST_STATUS"; then
+            callEnqueue "$jobPath" "" "${COMMAND_LINE_PARMS[@]}"
             continue
         fi
 	recentModList="${jobPath}${JOB_MODLIST_SUFFIX}"
@@ -197,8 +198,21 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         #----------------
         $CAT $recentModList | while read modName modComment; do
             [ "$VERBOSE" ] && $ECHO '        mod: ' $modName
-            if needToQueue "${jobPath}" "${modName}"; then
-                callEnqueue "${jobPath}" "${modName}"
+
+            # if a custom job control file exists then source it
+            [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
+
+            # assemble any custom parameters that were stashed in the modList file
+            parmCount=0`$ECHO "$modComment" | parseAssignment parmCount`
+            if [ $parmCount -gt 0 ]; then
+                for ((i=i; i<=$parmCount; i++)); do
+                    parm=`$ECHO "$modComment" | parseAssignment parm${i}`
+                    parms="$parms $parm" 
+                done
+            fi
+
+            if needToQueue "$jobPath" "$modName"; then
+                callEnqueue "$jobPath" "$modName" "$parms"
             fi
         done
 
