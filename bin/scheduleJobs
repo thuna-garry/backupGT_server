@@ -116,11 +116,11 @@ needToQueue () {
             maxAge=`$EXPR $JOB_INTERVAL \* 60`
             if isTimeStampTooOld ${lastSuccessTimeStamp:-1} $maxAge; then
                 needed=0  #true
-                [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState too old ($JOB_INTERVAL max age)"
+                [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState too old (job interval $JOB_INTERVAL)"
             
             else
                 needed=1  #false
-                [ "$VERBOSE" ] && $ECHO "          . curState=$curState sufficiently recent ($JOB_INTERVAL max age)"
+                [ "$VERBOSE" ] && $ECHO "          . curState=$curState sufficiently recent (job interval $JOB_INTERVAL)"
             fi
             ;;
         xFAILURE)
@@ -131,16 +131,16 @@ needToQueue () {
                 maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
                 if isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge; then
                     needed=0  #true
-                    [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
+                    [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState retry interval $JOB_RETRY_INTERVAL expired"
                 else
                     needed=1  #false
-                    [ "$VERBOSE" ] && $ECHO "          . curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
+                    [ "$VERBOSE" ] && $ECHO "          . curState=$curState too recent (retry interval $JOB_RETRY_INTERVAL)"
                 fi
             fi
             ;;
         *)
             needed=0  #true   
-            [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: no prior stats"
+            [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: no prior job status"
             ;;
     esac
     return $needed
