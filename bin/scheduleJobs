@@ -124,13 +124,18 @@ needToQueue () {
             fi
             ;;
         xFAILURE)
-            maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
-            if isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge; then
-                needed=0  #true
-                [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
-            else
+            if [ 0"$JOB_RETRY_INTERVAL" -eq 0 ]; then
                 needed=1  #false
-                [ "$VERBOSE" ] && $ECHO "          . curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
+                [ "$VERBOSE" ] && $ECHO "          . curState=$curState but retry on failure disabled (JOB_RETRY_INTERVAL=0)"
+            else
+                maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
+                if isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge; then
+                    needed=0  #true
+                    [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState wait period $JOB_RETRY_INTERVAL expired"
+                else
+                    needed=1  #false
+                    [ "$VERBOSE" ] && $ECHO "          . curState=$curState too recent (wait $JOB_RETRY_INTERVAL before retry)"
+                fi
             fi
             ;;
         *)
@@ -188,7 +193,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         # consider the job file itself
         #----------------
         if needToQueue "$jobPath" "$JOB_MODLIST_STATUS"; then
-            callEnqueue "$jobPath" "" "${COMMAND_LINE_PARMS[@]}"
+            callEnqueue "$jobPath" "" "${COMMAND_LINE_PARMS[@]}" 
             continue
         fi
 	recentModList="${jobPath}${JOB_MODLIST_SUFFIX}"
@@ -202,16 +207,15 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
             # if a custom job control file exists then source it
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
 
-            # assemble any custom parameters that were stashed in the modList file
-            parmCount=0`$ECHO "$modComment" | parseAssignment parmCount`
-            if [ $parmCount -gt 0 ]; then
-                for ((i=i; i<=$parmCount; i++)); do
-                    parm=`$ECHO "$modComment" | parseAssignment parm${i}`
-                    parms="$parms $parm" 
-                done
-            fi
-
             if needToQueue "$jobPath" "$modName"; then
+                # assemble any custom parameters that were stashed in the modList file
+                parmCount=0`$ECHO "$modComment" | parseAssignment parmCount`
+                if [ $parmCount -gt 0 ]; then
+                    for ((i=i; i<=$parmCount; i++)); do
+                        parm=`$ECHO "$modComment" | parseAssignment parm${i}`
+                        parms="$parms $parm" 
+                    done
+                fi
                 callEnqueue "$jobPath" "$modName" "$parms"
             fi
         done

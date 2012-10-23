@@ -7,3 +7,6 @@ JOB_RETRY_FAILED=60
 # priority: 00=highest  99=lowest (default 50)
 JOB_PRIORITY=
 
+# custom options
+JOB_EXTRA_PARMS=""
+

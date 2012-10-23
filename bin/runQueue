@@ -201,15 +201,19 @@ jobDir=`  $SED -n -e '/^jobDir:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"
 jobFile=` $SED -n -e '/^jobFile:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 modName=` $SED -n -e '/^modName:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 jobParms=`$SED -n -e '/^jobParms:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+
 if [ -z "$modName" ]; then
+    [ -f ${jobDir}/$JOB_CONTROL ]                    && . ${jobDir}/$JOB_CONTROL
+    [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
+
     modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
-        ${jobDir}/${jobFile} -j ${modListPath} $jobParms
-    ${jobDir}/${jobFile} -j ${modListPath} $jobParms
+        ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
+    ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
     rc=$?
 
     if [ $rc -eq 0 ]; then
-        #if we were sucessful then we need to save any jobParms 
+        #sucessful so save jobParms in modList
         i=0
         for parm in $jobParms; do
             i=$(( i + 1 ))
@@ -218,10 +222,15 @@ if [ -z "$modName" ]; then
         parmString="parmCount=${i} $parmString" 
         $SED -i -e "s/$/ ${parmString}/" ${modListPath}
     fi
+
 else
+    [ -f ${jobDir}/$JOB_CONTROL ]                               && . ${jobDir}/$JOB_CONTROL
+    [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
+    [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
+
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
-        ${jobDir}/${jobFile} -s "$modName" $jobParms
-    ${jobDir}/${jobFile} -s "$modName" $jobParms
+        ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
+    ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
     rc=$?
 fi
 
