@@ -40,20 +40,22 @@ date2timeStamp() {
 
 parseAssignment() {
     #-------------
-    # find a variable assignment in a string (stdin) and return the value
-    # assigned to the specified variable assuming an input string of the form
+    # find a variable assignment in a string and return the value assigned
+    # to the specified variable assuming an input string of the form
     #     var_1=val_1  var_2=val_2 ...
+    # each var=val is separated from others by [:blank:]space
+    # if a value needs to have embedded whitespace then the whitespace can
+    #     be encoded with an ascii US (unit separator \037 \x1F), which will
+    #     be decoded with a space before the value is returned
     #-------------
+    local var="$1"
 
-    local var=$1
-
-    #awk method (not always available in restricted environments)
-    #$AWK '{ print $0 }' RS=' ' | $GREP "${var}=" \
-    #    | $AWK '{ print substr($0, index($0, "=")+1) }'
-
-    #sed method: first delete any lines not containing $var, then get the value
-    $SED -e "/${var}/!d" \
-         -e "s/^.*${var}=\([^[:space:]]*\).*/\1/"
+    #sed method: first delete any lines not containing $var
+    #            then get the value
+    #            then convert any \037 chars to spaces
+    $SED -e "/${var}=/!d"                          \
+         -e "s/^.*${var}=\([^[:blank:]]*\).*/\1/"  \
+         -e "`$PRINTF 's/\037/ /g'`"
 }
 
 
@@ -62,13 +64,19 @@ makeAssignment() {
     # set a variable assignment in a string (stdin) to the specified variable
     # assuming an input string of the form
     #     var_1=val_1  var_2=val_2 ...
+    # each var=val is separated from others by [:blank:]space
+    # if the value itself contains [:blank:]space then each occurance will be
+    #     replaced with an ascii US (unit separator \037 \x1F)
     #-------------
 
-    local var=$1
-    local value=$2
+    local var="$1"
+    local value="$2"
+
+    local encodePattern="`$PRINTF 's/[[:blank:]]/\037/g'`"
+    value="`$ECHO \"$value\" | $SED -e $encodePattern`"
 
     #first delete any occurance of the variable $var, then append assignment
-    $SED -e "s/${var}=[^[:space:]]*//" \
+    $SED -e "s/${var}=[^[:blank:]]*//" \
          -e "s/$/ ${var}=${value}/"    \
          -e "s/^ //"
 }

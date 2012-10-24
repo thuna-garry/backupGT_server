@@ -214,12 +214,7 @@ if [ -z "$modName" ]; then
 
     if [ $rc -eq 0 ]; then
         #sucessful so save jobParms in modList
-        i=0
-        for parm in $jobParms; do
-            i=$(( i + 1 ))
-            parmString="$parmString parm${i}=${parm}"
-        done
-        parmString="parmCount=${i} $parmString" 
+        parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
         $SED -i -e "s/$/ ${parmString}/" ${modListPath}
     fi
 

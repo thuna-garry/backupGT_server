@@ -208,15 +208,8 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
 
             if needToQueue "$jobPath" "$modName"; then
-                # assemble any custom parameters that were stashed in the modList file
-                parmCount=0`$ECHO "$modComment" | parseAssignment parmCount`
-                if [ $parmCount -gt 0 ]; then
-                    for ((i=i; i<=$parmCount; i++)); do
-                        parm=`$ECHO "$modComment" | parseAssignment parm${i}`
-                        parms="$parms $parm" 
-                    done
-                fi
-                callEnqueue "$jobPath" "$modName" "$parms"
+                jobParms=`$ECHO "$modComment" | parseAssignment jobParms`
+                callEnqueue "$jobPath" "$modName" "$jobParms"
             fi
         done
 

@@ -3,9 +3,9 @@
 #### remember to make this file executable !
 
 bgtDir=/usr/local/backupGT_server
-jobFile=`readlink -f $0`
-jobDir=${0/*}
-jobName=${0##*/}
+jobPath=`readlink -f $0`
+jobDir=${jobPath%/*}
+jobFile=${jobPath##*/}
 
 export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 
@@ -13,7 +13,7 @@ export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/loca
 #############################################################
 # setup the backup
 #############################################################
-hostName=target.host           #or $jobName if job file is named after its target host
+hostName=target.host           #or $jobFile if job file is named after its target host
 
 targetHost=10.11.12.13         #not needed if $hostName is in DNS
 targetPort=22                  #allow for non standard ssh port

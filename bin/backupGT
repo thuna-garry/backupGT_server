@@ -437,8 +437,8 @@ getModuleList () {
             rc=$?
             ;;
         ssh)
-            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	$MODULE" 1>&2
-                                  $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	$MODULE"
+            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	modName=$MODULE" 1>&2
+                                  $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	modName=$MODULE"
             rc=$?
             ;;
     esac
