@@ -121,12 +121,12 @@
 #             any found key-file name to an emumerated key-file name.
 # 
 #             For example;
-#                  if the option was specified as 'key=345'
+#                  if the option was specified as 'key=34'
 #             and  the KEYFILE_SUFFIX (config variable) was '.key'
 #             and  SSH_OPTS contained the string 'my_rsa_private.key'
 #             then SSH_OPTS will be modified so that any occurance of '.key'
-#                  is replaced with '_345.key' and the result will be
-#                  'my_rsa_private_345.key'
+#                  is replaced with '_34.key' and the result will be
+#                  'my_rsa_private_34.key'
 # 
 #           NOTE: targets requiring the use of the 'key' option are unable
 #                 to use any backupServer specified options
@@ -568,7 +568,7 @@ doModule_file () {
     local hostDir=${STORAGE_ROOT}/${useHost}
     local modDir=${hostDir}/${useMod}
     local baseName=${modDir}/${useMod}
-    local targetKeySpec=`$ECHO $modComment | parseAssignment "key"`
+    local targetKeySpec=$(( 0`$ECHO $modComment | parseAssignment "key"` + 0 )) #convert to integer
 
     [ "$DEBUG" ] && $PRINTF 'debug: hostDir  = "%s"\n' $hostDir         1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: modDir   = "%s"\n' $modDir          1>&2
@@ -661,7 +661,7 @@ doModule_file () {
             if [ ! "$targetKeySpec" ]; then
                 local sshOpts=$SSH_OPTS
             else
-                local sshOpts=`$ECHO $SSH_OPTS | $SED -e "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
+                local sshOpts=`$ECHO $SSH_OPTS | $SED -e "s/\(${KEYFILE_SUFFIX}\)/_${targetKeySpec}\1/"`
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
@@ -699,7 +699,7 @@ doModule_file () {
             if [ ! "$targetKeySpec" ]; then
                 local sshOpts=$SSH_OPTS
             else
-                local sshOpts=`$ECHO $SSH_OPTS | $SED -e "s/\(${KEYFILE_SUFFIX}\)/${targetKeySpec}\1/"`
+                local sshOpts=`$ECHO $SSH_OPTS | $SED -e "s/\(${KEYFILE_SUFFIX}\)/_${targetKeySpec}\1/"`
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2

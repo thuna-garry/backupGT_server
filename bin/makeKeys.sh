@@ -39,26 +39,24 @@ else
 fi
 for i in "" $list; do
     if [ -n "$i" ]; then
-        keyNumber=`printf "%02s" $i`
-        keySuffix=_$keyNumber
+        keySuffix=_$i
     fi
 
     if [ -f "$HOME_DIR/keys/backupGT${keySuffix}.key" ]; then
-        printf 'key number %02s allready exists... skipping.\n' $i
+        printf 'key number %d allready exists... skipping.\n' $i
         continue
     else
-        printf '\n======== generating key %02s ============\n' $i
+        printf '\n======== generating key %d ============\n' $i
     fi
 
-    [ -f $HOME_DIR/keys/backupGT${keySuffix}.key ] && rm -f $HOME_DIR/keys/backupGT${keySuffix}.key
     ssh-keygen -t rsa \
                -b 2048 \
                -q \
                -C "backupGT${keySuffix}@$SERVER_DESC" \
                -f $HOME_DIR/keys/backupGT${keySuffix}.key
 
-    printf 'command="%s%s" ' "$TARGET_SCRIPT" "`echo $keySuffix | sed 's/_/ /'`" >  $HOME_DIR/keys/backupGT${keySuffix}.pub
-    cat    $HOME_DIR/keys/backupGT${keySuffix}.key.pub                           >> $HOME_DIR/keys/backupGT${keySuffix}.pub
+    printf 'command="%s %3s" ' "$TARGET_SCRIPT" $i      >  $HOME_DIR/keys/backupGT${keySuffix}.pub
+    cat    $HOME_DIR/keys/backupGT${keySuffix}.key.pub  >> $HOME_DIR/keys/backupGT${keySuffix}.pub
     rm -f  $HOME_DIR/keys/backupGT${keySuffix}.key.pub
 
     cat  $HOME_DIR/keys/backupGT${keySuffix}.pub >> $HOME_DIR/keys/_all.pub
