@@ -568,7 +568,8 @@ doModule_file () {
     local hostDir=${STORAGE_ROOT}/${useHost}
     local modDir=${hostDir}/${useMod}
     local baseName=${modDir}/${useMod}
-    local targetKeySpec=$(( 0`$ECHO $modComment | parseAssignment "key"` + 0 )) #convert to integer
+    local targetKeySpec=`$ECHO $modComment | parseAssignment "key"`
+    [ -n "$targetKeySpec" ] && targetKeySpec=$(( targetKeySpec + 0 )) #convert to integer
 
     [ "$DEBUG" ] && $PRINTF 'debug: hostDir  = "%s"\n' $hostDir         1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: modDir   = "%s"\n' $modDir          1>&2
