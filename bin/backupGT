@@ -589,26 +589,29 @@ doModule_file () {
     [ "$DEBUG" ] && $PRINTF 'debug: workDir  = "%s"\n' $workDir  1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: workLog  = "%s"\n' $workLog  1>&2
 
-    if [ -d "$newDir" ]; then
-        { $ECHO "---------------"
-          $ECHO "Backup skipped:"
-          $ECHO "    Target provided an original name that should be used for this backup"
-          $ECHO "    instance of the module, however, a backup with this name alreay exists"
-          $ECHO "---------------"
-          $ECHO ""
-        } | $TEE -a $workLog
-        return
-    fi
-
-    # make sure that the modDir exists
-    if [ ! -d "$modDir" ]; then    
+    if [ -d "$modDir" ]; then    
+        if [ -d "$newDir" ]; then
+            { $ECHO "---------------"
+              $ECHO "Backup skipped:"
+              $ECHO "    Target provided an original name that should be used for this backup"
+              $ECHO "    instance of the module, however, a backup with this name alreay exists"
+              $ECHO "---------------"
+              $ECHO ""
+            } | $TEE -a $workLog
+            return
+        fi
+    else
+        # create the modDir
         if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
             $SUDO $ZFS create -p -o mountpoint=$modDir $STORAGE_DS/$useHost/$useMod
         else
-            $MKDIR -p -m 750 $workDir
+            $MKDIR -p -m 750 $modDir
         fi
+        $SUDO $CHOWN $USER_NUM:$GROUP_NUM $modDir
     fi
-    $SUDO $CHOWN $USER_NUM:$GROUP_NUM $modDir
+
+    # make sure that the workDir (WIP) exists
+    $MKDIR -p -m 750 $workDir
     $ECHO -n "" >> $workLog
 
     # find the most recent dir, if this is the first time then create a seed directory
