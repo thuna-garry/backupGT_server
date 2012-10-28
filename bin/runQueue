@@ -36,10 +36,13 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO "Usage: $0 [-v] [<runnerNumber>]"
+    $ECHO "Usage: $0 [-v] [-D] [<runnerNumber>]"
     $ECHO "   This script spawns multiple copies of itself and each copy pulls and runs"
     $ECHO "   the job at the top of the queue (priority / FIFO order)."
     $ECHO "Options:"
+    $ECHO "   -v   Print verbose output"
+    $ECHO "   -D   Print debugging output, and do not spawn another instance prior to "
+    $ECHO "        exiting."
     $ECHO "   runnerNumber: a unique id to identify an instance of this script"
     $ECHO "                 from other instances. runnerNumber will be in the"
     $ECHO "                 range 1 to QUEUE_RUNNERS"
@@ -48,7 +51,7 @@ printFullUsage() {
     $ECHO 
     $ECHO " If the queued job does not specify a module then the job will be invoked"
     $ECHO " with the -j option, and if a module is specified the job will be invoked"
-    $ECHO " with the -s."
+    $ECHO " with the -s option."
     $ECHO 
     $ECHO " All job files must accept additional command line parameters and in turn "
     $ECHO " append them to the command line when calling backupGT.  Furthermore the"
@@ -65,9 +68,12 @@ printMiniUsage() {
 
 parseOptions() {
     local opSsupplied
-    while getopts ":v" arg; do
+    while getopts ":vD" arg; do
         case $arg in
-            v) VERBOSE="1" ;;
+            D) DEBUG=$(( DEBUG + 1 )) 
+               ;&
+            v) VERBOSE="1"
+               ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
                exit 1
                ;;
@@ -103,9 +109,10 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 case "$#" in
     0) for qrNum in `$SEQ $QUEUE_RUNNERS`; do
            [ "$VERBOSE" ] && $ECHO "${0}: spawning queueRunner $qrNum"
-           $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum} &
+           $0 `[ "$VERBOSE" ] && $ECHO "-v"` \
+              `[ "$DEBUG" ]   && $ECHO "-D"` ${qrNum} &
        done
-       exit
+       exit 0
        ;;
 
     1) qrNum="$1"
@@ -207,7 +214,7 @@ if [ -z "$modName" ]; then
     [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
 
     modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$)" \
         ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
     ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
     rc=$?
@@ -215,7 +222,7 @@ if [ -z "$modName" ]; then
     if [ $rc -eq 0 ]; then
         #sucessful so save jobParms in modList
         parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
-        $SED -i -e "s/$/ ${parmString}/" ${modListPath}
+        $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
     fi
 
 else
@@ -223,7 +230,7 @@ else
     [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
     [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
 
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$):" \
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$)" \
         ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
     ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
     rc=$?
@@ -271,6 +278,8 @@ trap - 0 SIGHUP SIGINT SIGQUIT SIGTERM
 #----------------
 # restart next instance of this queueRunner
 #----------------
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) exec'ing new instance."
-exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
+if [ ! "$DEBUG" ]; then
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) exec'ing new instance."
+    exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
+fi
 

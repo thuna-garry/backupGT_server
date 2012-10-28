@@ -202,7 +202,7 @@ printFullUsage() {
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
     $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
-    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j <modListPath>]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j [<modListPath>]]"
     $ECHO "          [-v] [-D]"
     $ECHO "Options:"
     $ECHO "   -h   Hostname for this backup"
@@ -237,7 +237,8 @@ printFullUsage() {
     $ECHO "          eg. \"0,0,0,0,30\" if backup completes without errors ..."
     $ECHO "              yearly,monthly,weekly, and daily backups will not be pruned and"
     $ECHO "              delete extra backups older than the most recent 30 extra backups"
-    $ECHO "   -j   Only retrieve the module list and echo it modListPath. This is used when this script"
+    $ECHO "   -j   Only retrieve the module list and echo it modListPath. If modListPath is not supplied"
+    $ECH0 "        then the retrieved list is output to stdout.  This is used when this script"
     $ECHO "        is being invoked by the backupGT job control system. The output module list will be"
     $ECHO "        subsequently be used by the job control system to retry the backup of each module"
     $ECHO "        at regular intervals until it succeeds."
@@ -263,7 +264,7 @@ printFullUsage() {
 
 printMiniUsage() {
     $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
-    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j] [-D]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j [modListPath]] [-v] [-D]"
 }
 
 
@@ -337,7 +338,8 @@ parseOptions() {
                 ;;
 
             j)
-                JOB_MOD_LIST_PATH="${OPTARG}"
+                JOB_MOD_LIST_ONLY=1
+                JOB_MOD_LIST_PATH="${OPTARG}"   # argument is optional (see case ":")
                 ;;
 
             D)
@@ -351,12 +353,17 @@ parseOptions() {
                 ;;
     
             :)
-                $ECHO "Option -${OPTARG} requires an argument." 1>&2
-                printMiniUsage 1>&2
-                exit 1
+                case ${OPTARG} in
+                    j) JOB_MOD_LIST_ONLY=1 ;;   # argument not required
+                     
+                    *) $ECHO "Option -${OPTARG} requires an argument." 1>&2
+                       printMiniUsage 1>&2
+                       exit 1
+                       ;;
+                esac
                 ;;
 
-            *)
+            *) # case could be \? (literal "?")
                 $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                 printFullUsage 1>&2
                 exit 1
@@ -450,27 +457,35 @@ getModuleList () {
 # backup modules (all or 1) for a particular host
 ###############################################################################
 doList () {
+    local rc
+
     $ECHO 
     $ECHO 
     $ECHO "Begin processing of $SRC_NAME"
     $ECHO "    using transport type: $TRANSPORT" 
     $ECHO "    retrieving module list"
 
-    # if called with the -j option just output the mod list
+    # create a temporary file in which to stash the list
     local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXX`
     getModuleList > $modListPath
-    local rc=$?
-
-    # if called with the -j option just output the mod list
-    if [ -n "$JOB_MOD_LIST_PATH" ]; then
-        if [ $rc -eq 0 ]; then
-            $ECHO "    writing module list to " "$JOB_MOD_LIST_PATH"
-            $CAT <"$modListPath" >"$JOB_MOD_LIST_PATH"
-        else
-            $ECHO "    error encountered aborting."
-        fi
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        $ECHO "    error encountered aborting."
         $RM -f "$modListPath"
         return $rc
+    fi
+
+    # if called with the -j option just output the mod list
+    if [ "$JOB_MOD_LIST_ONLY" ]; then
+        if [ -z "$JOB_MOD_LIST_PATH" ]; then
+            # if not supplied then use stdout
+            $CAT <"$modListPath"
+        else
+            $ECHO "    writing module list to " "$JOB_MOD_LIST_PATH"
+            $CAT <"$modListPath" >"$JOB_MOD_LIST_PATH"
+        fi
+        $RM -f "$modListPath"
+        return 0
     fi
 
     #display the module list
