@@ -257,7 +257,6 @@ printFullUsage() {
     $ECHO '       SSH_OPTS    default: "-l backupGT"'
     $ECHO '       RSYNC_HOST  default: hostname supplied as -h'
     $ECHO '       RSYNC_OPTS  default: "-vi"'
-
     exit 1
 }
 

@@ -118,7 +118,7 @@ case "$#" in
     1) qrNum="$1"
        ;;
 
-    *) printFullUsage
+    *) printFullUsage 1>&2
        ;;
 esac
 

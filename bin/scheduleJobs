@@ -82,6 +82,7 @@ parseOptions() {
         case $arg in
             v) VERBOSE="1" ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               printFullUsage 1>&2
                exit 1
                ;;
             *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2

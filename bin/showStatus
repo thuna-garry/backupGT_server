@@ -69,6 +69,7 @@ parseOptions() {
             u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
             H) SCRIPTED_MODE=1  ;	SHOW_ALL= ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               printFullUsage 1>&2
                exit 1
                ;;
             *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
