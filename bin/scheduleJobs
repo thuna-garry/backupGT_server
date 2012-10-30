@@ -1,4 +1,4 @@
-#! /usr/local/bin/bash 
+#! /usr/local/bin/bash
 
 ###############################################################################
 # This script finds jobs that haven't successfully run within a prescribed
@@ -101,20 +101,18 @@ needToQueue () {
     local jobPath="$1"
     local modName="$2"
     local needed 
-    local maxAge 
 
     local statusDir="${jobPath}${JOB_STATUS_DIR_SUFFIX}"
     local statusPath="${statusDir}/${modName}"
     local statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
 
-    local curState=`            $ECHO "$statLine" | parseAssignment curState`
-    local lastSuccessTimeStamp=`$ECHO "$statLine" | parseAssignment lastSuccessTimeStamp`
-    local lastFailureTimeStamp=`$ECHO "$statLine" | parseAssignment lastFailureTimeStamp`
+    local curState=`       $ECHO "$statLine" | parseAssignment curState`
+    local lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
+    local lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
             
     case x$curState in
         xSUCCESS)
-            maxAge=`$EXPR $JOB_INTERVAL \* 60`
-            if isTimeStampTooOld ${lastSuccessTimeStamp:-1} $maxAge; then
+            if isDateStampTooOld $lastSuccessDate $JOB_INTERVAL; then
                 needed=0  #true
                 [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState too old (job interval $JOB_INTERVAL)"
             
@@ -128,8 +126,7 @@ needToQueue () {
                 needed=1  #false
                 [ "$VERBOSE" ] && $ECHO "          . curState=$curState but retry on failure disabled (JOB_RETRY_INTERVAL=0)"
             else
-                maxAge=`$EXPR $JOB_RETRY_INTERVAL \* 60`
-                if isTimeStampTooOld ${lastFailureTimeStamp:-1} $maxAge; then
+                if isDateStampTooOld $lastFailureDate $JOB_INTERVAL; then
                     needed=0  #true
                     [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState retry interval $JOB_RETRY_INTERVAL expired"
                 else

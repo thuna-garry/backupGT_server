@@ -1,8 +1,6 @@
 ################################################################################
 # shared application globals
 ################################################################################
-DATE_FORMAT="%Y.%m.%d-%H%M%S"
-TS_FORMAT="%s"
 
 JOB_STATUS_DIR_SUFFIX=".status"
 #-------------------------------------------------------
@@ -18,10 +16,11 @@ JOB_MODLIST_SUFFIX=".modList"
 JOB_MODLIST_STATUS="%modList"
 
 
+################################################################################
+# date and timestamp manipulations
+################################################################################
+DATE_FORMAT="%Y.%m.%d-%H%M%S"
 
-################################################################################
-# shared shell functions
-################################################################################
 timeStamp2Date() {
     local ts=${1%z}
     case $SYSTEM_TYPE in
@@ -30,14 +29,59 @@ timeStamp2Date() {
     esac
 }
 
+
 date2timeStamp() {
     local date=${1%z}
     case $SYSTEM_TYPE in
-        linux) ;;  #todo
-        bsd)   $DATE -jf +${DATE_FORMAT} ${date} +%s ;;
+        linux)
+             dayPart=` $ECHO $date | $SED 's/^\([0-9][0-9][0-9][0-9]\).\([0-9][0-9]\).\([0-9][0-9]\).*/\1\2\3/'`
+             timePart=`$ECHO $date | $SED 's/.*\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)$/\1 \2 \3/'`
+             h=${timePart%% *}
+             m=${timePart#* }; m=${m% *}
+             s=${timePart##* }
+             secs=$(( h * 3600 + m * 60 + s ))
+             $DATE -u --date "$dayPart $secs sec" "+%s"
+             ;;
+        bsd)
+             $DATE -jf "${DATE_FORMAT}" "${date}" "+%s"
+             ;;
     esac
 }
 
+
+dateDiff () {
+    case $1 in
+        -s)   sec=1;      shift;;
+        -m)   sec=60;     shift;;
+        -h)   sec=3600;   shift;;
+        -d)   sec=86400;  shift;;
+        *)    sec=86400;;
+    esac
+    dte1=$(date2timeStamp $1)
+    dte2=$(date2timeStamp $2)
+    diffSec=$((dte2-dte1))
+    if ((diffSec < 0)); then abs=-1; else abs=1; fi
+    echo $((diffSec/sec*abs))
+}
+
+
+isDateStampTooOld () {
+    #-------------
+    # given an event dateStamp determine if it is older than the specified maxAge
+    # where maxAge is an interger number of minutes
+    #-------------
+    local eventDateStamp=${1%z}
+    local maxAge=$2
+
+    local curDS=`$DATE -u +${DATE_FORMAT}`
+    local elapsed=`dateDiff -m $eventDateStamp $curDS $curTs - $eventTs`
+    [ "$elapsed" -gt "$maxAge" ] && return 0 || return 1
+}
+
+
+################################################################################
+# shared shell functions
+################################################################################
 parseAssignment() {
     #-------------
     # find a variable assignment in a string and return the value assigned
@@ -103,20 +147,6 @@ checkRunningUser () {
 
     USER_NUM=`$ID -nu`
     GROUP_NUM=`$ID -ng`
-}
-
-
-isTimeStampTooOld () {
-    #-------------
-    # given an event timestamp (in UTC seconds since epoch) determine if it is older
-    # than the specified maxAge
-    #-------------
-    local eventTs=${1%z}
-    local maxAge=$2
-
-    curTs=`$DATE -u +${TS_FORMAT}`
-    elapsed=`$EXPR $curTs - $eventTs`
-    [ "$elapsed" -gt "$maxAge" ] && return 0 || return 1
 }
 
 

@@ -145,7 +145,7 @@ $ECHO jobParms: "$@"      >> $tmpPath
 crc=`$CKSUM $tmpPath | $SED -e 's/^\([[:alnum:]]*\).*/\1/'`
 isDup=`$FIND $QUEUE_ROOT -type f -name qj_\*_$crc`
 if [ -z "$isDup" ]; then
-    timeStamp=`$DATE -u +${TS_FORMAT}z`
+    timeStamp=`$DATE -u +${DATE_FORMAT}z`
     qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
     $MV $tmpPath $qjPath
     [ "$VERBOSE" ] && $ECHO "            ENQUEUED as: $qjPath"

@@ -136,7 +136,7 @@ fi
 #----------------
 # create a mutex in the queue (mark with a timestamp)
 #----------------
-timeStamp=`$DATE -u +${TS_FORMAT}z`
+timeStamp=`$DATE -u +${DATE_FORMAT}z`
 thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXX`
 $ECHO "$$" > $thisMutex
 $SLEEP 1
@@ -146,14 +146,14 @@ $SLEEP 1
 # see if thisMutex is governing for this qrNum
 #----------------
 for mutex in $queueDir/mutex_${qrNum}*; do
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) checking mutex $mutexPid"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) checking mutex $mutexPid"
     if [ "$mutex" = $thisMutex ]; then
         #this mutex is controlling
         break
     fi
     mutexPid=`$CAT $mutex`
     if $PS -o pid,command -p $mutexPid | $GREP -q "^$mutexPid"; then
-        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) another istance is controlling - exiting"
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) another istance is controlling - exiting"
         $RM -f $thisMutex
         exit 0
     else
@@ -161,7 +161,7 @@ for mutex in $queueDir/mutex_${qrNum}*; do
         $RM -f $mutex
     fi
 done
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) is controlling mutex=${thisMutex##*/}"
+[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) is controlling mutex=${thisMutex##*/}"
 
 
 #----------------
@@ -181,11 +181,11 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 #----------------
 firstQueuedJobPath=`$LS $queueDir/qj_* 2>/dev/null | $HEAD -1`
 if [ -z "$firstQueuedJobPath" ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) queue is empty - exiting"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) queue is empty - exiting"
     $RM -f $thisMutex
     exit 0
 fi
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) queue head is ${firstQueuedJobPath##*/}"
+[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) queue head is ${firstQueuedJobPath##*/}"
 
 
 #----------------
@@ -194,11 +194,11 @@ fi
 mxqj="$queueDir/mx_${qrNum}_${firstQueuedJobPath##*/}"
 $MV "$firstQueuedJobPath" "$mxqj" 2>/dev/null
 if [ ! -f "$mxqj" ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) competing queue runner took head; restarting"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) competing queue runner took head; restarting"
     $RM -f $thisMutex
     exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
 fi
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) has dequeued head as ${mxqj##*/}"
+[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) has dequeued head as ${mxqj##*/}"
 
 
 #----------------
@@ -214,7 +214,7 @@ if [ -z "$modName" ]; then
     [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
 
     modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$)" \
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
         ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
     ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
     rc=$?
@@ -230,7 +230,7 @@ else
     [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
     [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
 
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$)" \
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
         ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
     ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
     rc=$?
@@ -243,26 +243,19 @@ fi
 statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
 statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}" 
 statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
-lastSuccessDate=`     $ECHO "$statLine" | parseAssignment lastSuccessDate`
-lastSuccessTimeStamp=`$ECHO "$statLine" | parseAssignment lastSuccessTimeStamp`
-lastFailureDate=`     $ECHO "$statLine" | parseAssignment lastFailureDate`
-lastFailureTimeStamp=`$ECHO "$statLine" | parseAssignment lastFailureTimeStamp`
-statLine=`$ECHO "$timeStamp" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
+lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
+lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
+statLine=`$ECHO "$timeStamp" | makeAssignment curDate $timeStamp`
 if [ "$rc" -eq 0 ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) success - updating status"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) success - updating status"
     statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $(timeStamp2Date $timeStamp)`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $timeStamp`
+    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $timeStamp`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $lastFailureDate`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $lastFailureTimeStamp`
 else
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) failure - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curDate $(timeStamp2Date $timeStamp)`
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) failure - updating status"
     statLine=`$ECHO "$statLine" | makeAssignment curState FAILURE`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $lastSuccessDate`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessTimeStamp $lastSuccessTimeStamp`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $(timeStamp2Date $timeStamp)`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureTimeStamp $timeStamp`
+    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $timeStamp`
 fi
 $MKDIR -p $statusDir    #ensure that the job status dir exists
 $ECHO "$statLine" >> $statusPath
@@ -279,7 +272,7 @@ trap - 0 SIGHUP SIGINT SIGQUIT SIGTERM
 # restart next instance of this queueRunner
 #----------------
 if [ ! "$DEBUG" ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum ($$) exec'ing new instance."
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) exec'ing new instance."
     exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
 fi
 
