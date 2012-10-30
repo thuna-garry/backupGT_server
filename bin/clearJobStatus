@@ -1,0 +1,12 @@
+#! /bin/sh
+
+
+###############################################################################
+# This script removes all status files from the jobs directory
+###############################################################################
+# include user defined globals and the common library
+. ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
+
+
+find $JOB_ROOT -name '*.status' -type d -exec rm -rf {} \; 2>&1

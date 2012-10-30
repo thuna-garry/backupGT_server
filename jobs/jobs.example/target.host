@@ -27,6 +27,6 @@ export RSYNC_OPTS="-vi"
 export TAR_OPTS=""
 
 # do the backup
-( printenv > ${jobFile}.printenv )   #save a copy of env for debug
+( printenv > /tmp/${jobFile}.printenv )   #save a copy of env for debug
 $bgtDir/bin/backupGT -h $hostName -t ssh $* 
 
