@@ -1,0 +1,12 @@
+SHELL=/bin/sh
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+#MAILTO=""
+
+#minute hour    mday    month   wday    command
+#====== ======= ======= ======= ======= ======================================
+1-59/10 *       *       *       *       /usr/local/backupGT_server/bin/scheduleJobs
+2-59/10 *       *       *       *       /usr/local/backupGT_server/bin/runQueue
+
+1       */4     *       *       *       (cd /usr/local/backupGT_server; git pull) > /dev/null 2>&1
+0       6       *       *       *       /usr/local/backupGT_server/bin/showStatus | mail -s "`hostname -s` Backup Status" is.backups@domain.com
+

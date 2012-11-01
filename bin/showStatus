@@ -83,7 +83,7 @@ parseOptions() {
 
 
 ###############################################################################
-# status reporting routines
+# utilities
 ###############################################################################
 isJobSuspect () {
     local status=$1
@@ -104,6 +104,9 @@ isJobSuspect () {
 }
 
 
+###############################################################################
+# status reporting routines
+###############################################################################
 jobControlStatus () {
     local statusFile
     local jobName
@@ -123,6 +126,7 @@ jobControlStatus () {
 
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
     [ "$SCRIPTED_MODE" ] || $ECHO "- Job Control Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
     $FIND $JOB_ROOT -type d -name $findName \
     | while read statusDir; do
@@ -200,6 +204,7 @@ targetHostStatus () {
 
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
     [ "$SCRIPTED_MODE" ] || $ECHO "- Host (target) Backup Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     if [ -z "$TARGET_HOST" ]; then
@@ -238,6 +243,7 @@ targetHostStatus () {
 spaceUtilization () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
     [ "$SCRIPTED_MODE" ] || $ECHO "- `$HOSTNAME` Space Utilization"
+    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     case $SYSTEM_TYPE in
