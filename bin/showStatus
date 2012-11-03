@@ -150,9 +150,9 @@ isQueued () {
     local modName="$2"
     local default="$3" 
 
-    if   $LS $QUEUE_ROOT/mx_* | $GREP -q ${hostName}_${modName}; then
+    if   $LS $QUEUE_ROOT/mx_* 2>/dev/null | $GREP -q ${hostName}_${modName}; then
         $ECHO "$default" | $SED 's/.$/r/'
-    elif $LS $QUEUE_ROOT/qj_* | $GREP -q ${hostName}_${modName}; then
+    elif $LS $QUEUE_ROOT/qj_* 2>/dev/null | $GREP -q ${hostName}_${modName}; then
         $ECHO "$default" | $SED 's/.$/q/'
     else
         $ECHO "$default"
@@ -274,12 +274,12 @@ queueStatus () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     $ECHO "Running Jobs"
-    for f in $QUEUE_ROOT/mx_*; do
+    for f in `ls $QUEUE_ROOT/mx_* 2>/dev/null` ; do
        $ECHO "    $f"
     done
 
     $ECHO "Queued Jobs"
-    for f in $QUEUE_ROOT/qj_*; do
+    for f in `ls $QUEUE_ROOT/qj_* 2>/dev/null` ; do
        $ECHO "    $f"
     done
 
