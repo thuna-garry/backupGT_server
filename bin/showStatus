@@ -43,29 +43,32 @@ printFullUsage() {
     $ECHO "  -h    only print the stats for the named targetHost"
     $ECHO "  -j    include the status for jobs"
     $ECHO "  -t    include the status for target hosts"
+    $ECHO "  -q    include current job queue state"
     $ECHO "  -u    include a summary for space utilization"
     $ECHO "  -H    scripted mode do not display any headers, footers or other decoration"
-    $ECHO "If neither -j, -t, or -u is specified all are assumed"
+    $ECHO "If neither -j, -t, -q, or -u is specified all are assumed"
     exit 1
 }
 
 
 printMiniUsage() {
-    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-u]"
+    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-q] [-u]"
 }
 
 
 SHOW_ALL=1
 SHOW_JOB_STATUS=
 SHOW_HOST_STATUS=
+SHOW_QUEUE_STATUS=
 SHOW_SPACE_UTIL=
 SCRIPTED_MODE=
 parseOptions() {
-    while getopts ":h:jtuH" arg; do
+    while getopts ":h:jtquH" arg; do
         case $arg in
             h) TARGET_HOST=${OPTARG};;
             j) SHOW_JOB_STATUS=1  ;	SHOW_ALL= ;;
             t) SHOW_HOST_STATUS=1 ;	SHOW_ALL= ;;
+            q) SHOW_QUEUE_STATUS=1 ;	SHOW_ALL= ;;
             u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
             H) SCRIPTED_MODE=1  ;	SHOW_ALL= ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
@@ -95,60 +98,12 @@ isJobSuspect () {
     statDate=${statDate//\./}
     local elapsed=$(( ${CUR_DATE//\./} - statDate ))
 
-    # return the isSuspect string
+    # is it suspect
     if [ "$status" = "FAILURE" -o "$elapsed" -gt 1  ]; then
         $ECHO "!!"
     else
         $ECHO "  "
     fi
-}
-
-
-###############################################################################
-# status reporting routines
-###############################################################################
-jobControlStatus () {
-    local statusFile
-    local jobName
-    local jobPath
-
-    local jobStatusLine
-    local modStatusLine
-    local curState
-    local curDate
-
-    local findName
-    if [ -z "$TARGET_HOST" ]; then
-        findName='*.status'
-    else
-        findName=${TARGET_HOST}".status"
-    fi
-
-    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
-    [ "$SCRIPTED_MODE" ] || $ECHO "- Job Control Status/Results"
-    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
-    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
-    $FIND $JOB_ROOT -type d -name $findName \
-    | while read statusDir; do
-        statusFile=${statusDir##*/}
-        jobName=${statusFile%.status}
-        jobPath=${statusDir%.status}
-
-        jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
-        curState=`$ECHO $jobStatusLine | parseAssignment curState`
-        curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
-        $PRINTF "%-40s      %s %s %s\n" "$jobName" "`isJobSuspect $curState $curDate`" "$curState" "$curDate"
-
-        ls $statusDir | while read modStatFile; do
-            [ "modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
-            modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
-            curState=`$ECHO $jobStatusLine | parseAssignment curState`
-            curDate=` $ECHO $modStatusLine | parseAssignment curDate`
-            $PRINTF "    %-40s  %s %s %s\n" "$modStatFile" "`isJobSuspect $curState $curDate`" "$curState" "$curDate"
-        done
-    done
-    [ "$SCRIPTED_MODE" ] || $ECHO
-    [ "$SCRIPTED_MODE" ] || $ECHO
 }
 
 
@@ -190,6 +145,74 @@ isModSuspect () {
 }
 
 
+isQueued () {
+    local hostName="$1"
+    local modName="$2"
+    local default="$3" 
+
+    if   $LS $QUEUE_ROOT/mx_* | $GREP -q ${hostName}_${modName}; then
+        $ECHO "$default" | $SED 's/.$/r/'
+    elif $LS $QUEUE_ROOT/qj_* | $GREP -q ${hostName}_${modName}; then
+        $ECHO "$default" | $SED 's/.$/q/'
+    else
+        $ECHO "$default"
+    fi
+}
+
+
+###############################################################################
+# status reporting routines
+###############################################################################
+jobControlStatus () {
+    local statusFile
+    local jobName
+    local jobPath
+
+    local jobStatusLine
+    local modStatusLine
+    local curState
+    local curDate
+    local isSuspect
+
+    local findName
+    if [ -z "$TARGET_HOST" ]; then
+        findName='*.status'
+    else
+        findName=${TARGET_HOST}".status"
+    fi
+
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    [ "$SCRIPTED_MODE" ] || $ECHO "- Job Control Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    $FIND $JOB_ROOT -type d -name $findName \
+    | while read statusDir; do
+        statusFile=${statusDir##*/}
+        jobName=${statusFile%.status}
+        jobPath=${statusDir%.status}
+
+        jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
+        curState=`$ECHO $jobStatusLine | parseAssignment curState`
+        curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
+        isSuspect=`isJobSuspect "$curState" "$curDate"`
+        isSuspect=`isQueued     "$jobName" "_listModules" "$isSuspect"`
+        $PRINTF "%-40s      %s %s %s\n" "$jobName" "$isSuspect" "$curState" "$curDate"
+
+        ls $statusDir | while read modStatFile; do
+            [ "$modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
+            modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
+            curState=`$ECHO $jobStatusLine | parseAssignment curState`
+            curDate=` $ECHO $modStatusLine | parseAssignment curDate`
+            isSuspect=`isJobSuspect "$curState" "$curDate"`
+            isSuspect=`isQueued     "$jobName" "$modStatFile" "$isSuspect"`
+            $PRINTF "    %-40s  %s %s %s\n" "$modStatFile" "$isSuspect" "$curState" "$curDate"
+        done
+    done
+    [ "$SCRIPTED_MODE" ] || $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+}
+
+
 targetHostStatus () {
     local findRoot
     local findDepth
@@ -201,6 +224,7 @@ targetHostStatus () {
     local hostName
     local curHost
     local lastLine
+    local isSuspect
 
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
     [ "$SCRIPTED_MODE" ] || $ECHO "- Host (target) Backup Status/Results"
@@ -230,11 +254,35 @@ targetHostStatus () {
         fi
         if [ "$itemFound" = 'status' ]; then
             lastLine=`$TAIL -1 $f`
-            $PRINTF "    %-25s %s %s %s\n" "$modName" "`isModSuspect $lastLine`" "$lastLine"
+            isSuspect=`isModSuspect $lastLine`
+            isSuspect=`isQueued     "$hostName" "$modName" "$isSuspect"`
+            $PRINTF "    %-25s %s %s %s\n" "$modName" "$isSuspect" "$lastLine"
         else
-            $PRINTF "    %-25s !! %s %s\n" "$modName" "FAILURE WIP found:" "$f"
+            isSuspect=`isQueued     "$hostName" "$modName" "!!"`
+            $PRINTF "    %-25s %s %s %s\n" "$modName" "$isSuspect" "FAILURE WIP found:" "$f"
         fi
     done
+    [ "$SCRIPTED_MODE" ] || $ECHO
+    [ "$SCRIPTED_MODE" ] || $ECHO
+}
+
+
+queueStatus () {
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+    [ "$SCRIPTED_MODE" ] || $ECHO "- Queue status"
+    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
+    [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+
+    $ECHO "Running Jobs"
+    for f in $QUEUE_ROOT/mx_*; do
+       $ECHO "    $f"
+    done
+
+    $ECHO "Queued Jobs"
+    for f in $QUEUE_ROOT/qj_*; do
+       $ECHO "    $f"
+    done
+
     [ "$SCRIPTED_MODE" ] || $ECHO
     [ "$SCRIPTED_MODE" ] || $ECHO
 }
@@ -305,9 +353,10 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 case ${0##*/} in      #see how we are called
     showStatus)
-        [ "$SHOW_ALL" -o "$SHOW_JOB_STATUS"  ] && jobControlStatus $*
-        [ "$SHOW_ALL" -o "$SHOW_HOST_STATUS" ] && targetHostStatus $*
-        [ "$SHOW_ALL" -o "$SHOW_SPACE_UTIL"  ] && spaceUtilization $*
+        [ "$SHOW_ALL" -o "$SHOW_JOB_STATUS"  ]  && jobControlStatus $*
+        [ "$SHOW_ALL" -o "$SHOW_HOST_STATUS" ]  && targetHostStatus $*
+        [ "$SHOW_ALL" -o "$SHOW_QUEUE_STATUS" ] && queueStatus $*
+        [ "$SHOW_ALL" -o "$SHOW_SPACE_UTIL"  ]  && spaceUtilization $*
         ;;
 esac
 
