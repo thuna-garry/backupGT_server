@@ -66,6 +66,7 @@ printFullUsage() {
     $ECHO "   within their prescribed JOB_INTERVAL (as specified in the JOB_CONTROL"
     $ECHO "   file to be found in the same directory as the job file) and queue them"
     $ECHO "   to run."
+    $ECHO ""
     $ECHO "Options:"
     $ECHO "  -v  verbose: prints detail of processing to stdout. "
     exit 1
@@ -199,7 +200,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
         #----------------
         # now consider the modules
         #----------------
-        $CAT $recentModList | while read modName modComment; do
+        $CAT $recentModList 2>/dev/null | while read modName modComment; do
             [ "$VERBOSE" ] && $ECHO '        mod: ' $modName
 
             # if a custom job control file exists then source it

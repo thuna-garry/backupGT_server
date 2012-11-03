@@ -109,12 +109,21 @@ parseOptions() {
         esac
     done
 
-    [ -z "$jobPath" ] && printFullUsage 1>&2
-    [ "${jobPath:0:1}" != "/" ] && jobPath=${JOB_PATH}/${jobPath}
+    if [ -z "$jobPath" ]; then
+        $ECHO "Option -j must be supplied." 1>&2
+        printMiniUsage 1>&2
+        exit 1
+    elif [ "${jobPath:0:1}" != "/" ]; then
+        jobPath=${JOB_ROOT}/${jobPath}
+    fi
     jobDir=${jobPath%/*}
     jobFile=${jobPath##*/}
 
-    [ -z "$sOptionSupplied" ] && printFullUsag 1>&2
+    if [ -z "$sOptionSupplied" ]; then
+        $ECHO "Option -s must be supplied." 1>&2
+        printMiniUsage 1>&2
+        exit 1
+    fi
 
     priority=`$ECHO $priority | grep "^[0-9][0-9]$"`
     priority=${priority:-50}
