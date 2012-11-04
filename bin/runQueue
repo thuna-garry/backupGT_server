@@ -146,22 +146,23 @@ $SLEEP 1
 # see if thisMutex is governing for this qrNum
 #----------------
 for mutex in $queueDir/mutex_${qrNum}*; do
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) checking mutex $mutexPid"
     if [ "$mutex" = $thisMutex ]; then
         #this mutex is controlling
         break
     fi
     mutexPid=`$CAT $mutex`
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$): checking ${mutex##*/} (pid=$mutexPid)"
     if $PS -o pid,command -p $mutexPid | $GREP -q "^$mutexPid"; then
         [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) another istance is controlling - exiting"
         $RM -f $thisMutex
         exit 0
     else
         # queueRunner is defunct, remove stale mutex
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$):          ${mutex##*/} is defunct, removing stale mutex"
         $RM -f $mutex
     fi
 done
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) is controlling mutex=${thisMutex##*/}"
+[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$): has control mutex=${thisMutex##*/}"
 
 
 #----------------
@@ -219,7 +220,7 @@ if [ -z "$modName" ]; then
     ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
     rc=$?
 
-    if [ $rc -eq 0 ]; then
+    if [ $rc -eq 0 -a -f "${modListPath}" ]; then
         #sucessful so save jobParms in modList
         parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
         $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
