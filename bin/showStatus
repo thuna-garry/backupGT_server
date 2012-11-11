@@ -23,8 +23,8 @@ fi
 ###############################################################################
 LAST_MODIFIED_DATE='2012.10.14'
 
-CUR_DATE=`$DATE -u +${DATE_FORMAT%%-*}`
-SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED -e 's/ /-/g'`
+NOW_DATE=`$DATE -u +${DATE_FORMAT}`
+SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED -e 's/ /=/g'`
 
 
 ###############################################################################
@@ -88,29 +88,27 @@ parseOptions() {
 ###############################################################################
 # utilities
 ###############################################################################
-isJobSuspect () {
+isItemSuspect () {
     local status=$1
     local statDate=$2
  
     # get the age of the status entry
-    statDate=${statDate%%-*}  # correct format
-    statDate=${statDate%%_*}  # old format
-    statDate=${statDate//\./}
-    local elapsed=$(( ${CUR_DATE//\./} - statDate ))
+    statDate=${statDate/_/-}  # fix old format
+    local elapsed=`dateDiff $statDate $NOW_DATE`
 
     # is it suspect
-    if [ "$status" = "FAILURE" -o "$elapsed" -gt 1  ]; then
-        $ECHO "!!"
+    if [ "$status" = "FAILURE" -o "$elapsed" -ge 1  ]; then
+        $ECHO "!!" 
     else
         $ECHO "  "
     fi
 }
 
 
-isModSuspect () {
+convertOldModStatus () {
     local statLine=$*
  
-    # convert from old format
+    # convert the status line from old format
     if $ECHO "$statLine" | $GREP -q '^[2]'; then
         statLine="curDate=$statLine"
         statLine=${statLine/[files: /files=}
@@ -125,30 +123,19 @@ isModSuspect () {
         fi
     fi
 
-    # get the age of the status entry
+    # convert the date from old format
     local statDate=`$ECHO $statLine | parseAssignment curDate`
-    statDate=${statDate%%-*}  # correct format
-    statDate=${statDate%%_*}  # old format
-    statDate=${statDate//\./}
-    local elapsed=$(( ${CUR_DATE//\./} - statDate ))
+    statLine=`$ECHO $statLine | makeAssignment curDate ${statDate/_/-}`
 
-    # get the status
-    local status=`$ECHO $statLine | parseAssignment curState`
-
-    # return the isSuspect string
-    local status=`$ECHO $statLine | parseAssignment curState`
-    if [ "$status" = "FAILURE" -o "$elapsed" -gt 1  ]; then
-        $PRINTF "!!"
-    else
-        $PRINTF "  "
-    fi
+    # return the converted statline
+    $ECHO $statLine
 }
 
 
 isQueued () {
     local hostName="$1"
     local modName="$2"
-    local default="$3" 
+    local default="$3"   #default string to return
 
     if   $LS $QUEUE_ROOT/mx_* 2>/dev/null | $GREP -q ${hostName}_${modName}; then
         $ECHO "$default" | $SED 's/.$/r/'
@@ -173,6 +160,7 @@ jobControlStatus () {
     local curState
     local curDate
     local isSuspect
+    local age
 
     local findName
     if [ -z "$TARGET_HOST" ]; then
@@ -182,9 +170,11 @@ jobControlStatus () {
     fi
 
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
-    [ "$SCRIPTED_MODE" ] || $ECHO "- Job Control Status/Results"
-    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
+    [ "$SCRIPTED_MODE" ] || $ECHO "= Job Control Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "=	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
+#    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "Host/Module                    " "Status " "Date              " "Age       "
+#    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "-------------------------------" "-------" "------------------" "----------"
     $FIND $JOB_ROOT -type d -name $findName \
     | while read statusDir; do
         statusFile=${statusDir##*/}
@@ -194,18 +184,20 @@ jobControlStatus () {
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
         curState=`$ECHO $jobStatusLine | parseAssignment curState`
         curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
-        isSuspect=`isJobSuspect "$curState" "$curDate"`
+        isSuspect=`isItemSuspect "$curState" "$curDate"`
         isSuspect=`isQueued     "$jobName" "_listModules" "$isSuspect"`
-        $PRINTF "%-40s      %s %s %s\n" "$jobName" "$isSuspect" "$curState" "$curDate"
+        age=`dateDiffFmt "$curDate" "$NOW_DATE"`
+        $PRINTF "%-40s     %s %s %s %s\n" "$jobName" "$isSuspect" "$curState" "$curDate" "$age"
 
         ls $statusDir | while read modStatFile; do
             [ "$modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
             modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
             curState=`$ECHO $jobStatusLine | parseAssignment curState`
             curDate=` $ECHO $modStatusLine | parseAssignment curDate`
-            isSuspect=`isJobSuspect "$curState" "$curDate"`
+            isSuspect=`isItemSuspect "$curState" "$curDate"`
             isSuspect=`isQueued     "$jobName" "$modStatFile" "$isSuspect"`
-            $PRINTF "    %-40s  %s %s %s\n" "$modStatFile" "$isSuspect" "$curState" "$curDate"
+            age=`dateDiffFmt "$curDate" "$NOW_DATE"`
+            $PRINTF "    %-40s %s %s %s %s\n" "$modStatFile" "$isSuspect" "$curState" "$curDate" "$age"
         done
     done
     [ "$SCRIPTED_MODE" ] || $ECHO
@@ -223,12 +215,16 @@ targetHostStatus () {
     local hostDir
     local hostName
     local curHost
-    local lastLine
+
+    local statusLine
+    local curState
+    local curDate
     local isSuspect
+    local age
 
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
-    [ "$SCRIPTED_MODE" ] || $ECHO "- Host (target) Backup Status/Results"
-    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
+    [ "$SCRIPTED_MODE" ] || $ECHO "= Host (target) Backup Status/Results"
+    [ "$SCRIPTED_MODE" ] || $ECHO "=	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     if [ -z "$TARGET_HOST" ]; then
@@ -253,10 +249,17 @@ targetHostStatus () {
             curHost=$hostName
         fi
         if [ "$itemFound" = 'status' ]; then
-            lastLine=`$TAIL -1 $f`
-            isSuspect=`isModSuspect $lastLine`
-            isSuspect=`isQueued     "$hostName" "$modName" "$isSuspect"`
-            $PRINTF "    %-25s %s %s %s\n" "$modName" "$isSuspect" "$lastLine"
+            statusLine=`$TAIL -1 $f`
+            statusLine=`convertOldModStatus $statusLine`
+            curState=`$ECHO $statusLine | parseAssignment curState`
+            curDate=` $ECHO $statusLine | parseAssignment curDate`
+            isSuspect=`isItemSuspect "$curState" "$curDate"`
+            isSuspect=`isQueued      "$hostName" "$modName" "$isSuspect"`
+            age=`dateDiffFmt "$curDate" "$NOW_DATE"`
+            
+            statusLine=`$ECHO $statusLine | delAssignment curState`
+            statusLine=`$ECHO $statusLine | delAssignment curDate`
+            $PRINTF "    %-25s %s %s %s %s %s\n" "$modName" "$isSuspect" "$curState" "$curDate" "$age" "$statusLine"
         else
             isSuspect=`isQueued     "$hostName" "$modName" "!!"`
             $PRINTF "    %-25s %s %s %s\n" "$modName" "$isSuspect" "FAILURE WIP found:" "$f"
@@ -269,8 +272,8 @@ targetHostStatus () {
 
 queueStatus () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
-    [ "$SCRIPTED_MODE" ] || $ECHO "- Queue status"
-    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
+    [ "$SCRIPTED_MODE" ] || $ECHO "= Queue status"
+    [ "$SCRIPTED_MODE" ] || $ECHO "=	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     $ECHO "Running Jobs"
@@ -290,8 +293,8 @@ queueStatus () {
 
 spaceUtilization () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
-    [ "$SCRIPTED_MODE" ] || $ECHO "- `$HOSTNAME` Space Utilization"
-    [ "$SCRIPTED_MODE" ] || $ECHO "-	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
+    [ "$SCRIPTED_MODE" ] || $ECHO "= `$HOSTNAME` Space Utilization"
+    [ "$SCRIPTED_MODE" ] || $ECHO "=	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     case $SYSTEM_TYPE in

@@ -60,8 +60,20 @@ dateDiff () {
     dte1=$(date2timeStamp $1)
     dte2=$(date2timeStamp $2)
     diffSec=$((dte2-dte1))
-    if ((diffSec < 0)); then abs=-1; else abs=1; fi
+    if [ $diffSec -lt 0 ]; then abs=-1; else abs=1; fi
     echo $((diffSec/sec*abs))
+}
+
+
+dateDiffFmt () {
+    local dte1="$1"
+    local dte2="$2"
+    local diffSec=`dateDiff -s "$1" "$2"`
+    local days=$(( diffSec / 86400 ));  diffSec=$(( diffSec - days * 86400 ))
+    local hrs=$((  diffSec / 3600  ));  diffSec=$(( diffSec - hrs  * 3600  ))
+    local mins=$(( diffSec / 60    ));  diffSec=$(( diffSec - mins * 60 ))
+    local secs=$(( diffSec         ));
+    printf "%d.%02d.%02d.%02d" $days $hrs $mins $secs
 }
 
 
@@ -123,6 +135,21 @@ makeAssignment() {
     $SED -e "s/${var}=[^[:blank:]]*//" \
          -e "s/$/ ${var}=${value}/"    \
          -e "s/^ //"
+}
+
+
+delAssignment() {
+    #-------------
+    # remove a variable assignment from a string (stdin)
+    # assuming an input string of the form
+    #     var_1=val_1  var_2=val_2 ...
+    # each var=val is separated from others by [:blank:]space
+    #-------------
+
+    local var="$1"
+
+    #delete any occurance of the variable $var
+    $SED -e "s/${var}=[^[:blank:]]*//"
 }
 
 
