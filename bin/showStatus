@@ -182,8 +182,6 @@ jobControlStatus () {
         jobPath=${statusDir%.status}
 
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
-echo ${statusDir}/${JOB_MODLIST_STATUS}
-echo $jobStatusLine
         curState=`$ECHO $jobStatusLine | parseAssignment curState`
         curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
         isSuspect=`isItemSuspect "$curState" "$curDate"`
