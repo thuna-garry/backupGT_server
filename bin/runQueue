@@ -62,7 +62,7 @@ printFullUsage() {
 
 
 printMiniUsage() {
-    $ECHO "Usage: $0 [<queueName>]"
+    $ECHO "Usage: $0 [-v] [-D] [<queueName>]"
 }
 
 
@@ -75,9 +75,11 @@ parseOptions() {
             v) VERBOSE="1"
                ;;
             :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               printFullUsage 1>&2
                exit 1
                ;;
             *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
+               printFullUsage 1>&2
                exit 1
                ;;
         esac
@@ -236,6 +238,7 @@ else
     ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
     rc=$?
 fi
+[ "$DEBUG" ] && $ECHO "queueRunner_$qrNum (pid=$$) job return code=$rc"
 
 
 #----------------

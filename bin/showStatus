@@ -182,6 +182,8 @@ jobControlStatus () {
         jobPath=${statusDir%.status}
 
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
+echo ${statusDir}/${JOB_MODLIST_STATUS}
+echo $jobStatusLine
         curState=`$ECHO $jobStatusLine | parseAssignment curState`
         curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
         isSuspect=`isItemSuspect "$curState" "$curDate"`
@@ -192,7 +194,7 @@ jobControlStatus () {
         ls $statusDir | while read modStatFile; do
             [ "$modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
             modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
-            curState=`$ECHO $jobStatusLine | parseAssignment curState`
+            curState=`$ECHO $modStatusLine | parseAssignment curState`
             curDate=` $ECHO $modStatusLine | parseAssignment curDate`
             isSuspect=`isItemSuspect "$curState" "$curDate"`
             isSuspect=`isQueued     "$jobName" "$modStatFile" "$isSuspect"`
