@@ -1038,10 +1038,21 @@ pruneOldBackups () {
         return
     fi
 
+    # do the prune
+    local dir
     for dir in `$LS -dr ${baseName}*_${RETENSION_TYPE} 2>/dev/null | $SED -e "$sedPattern"`; do
         $ECHO "  pruning $dir"
-        $NICE $SUDO $RM -rf $dir
-        $NICE $SUDO $RM -rf $dir.log
+        $NICE $SUDO $RM -rf "$dir"
+        $NICE $SUDO $RM -rf "$dir.log"
+    done
+
+    # remove any orphaned log files
+    local lf
+    for lf in `$LS -f ${baseName}*_?.log 2>/dev/null`; do
+        dir=${lf%.log}
+        [ -d "$dir" ] && continue
+        $ECHO "  pruning orphaned log file $lf"
+        $NICE $SUDO $RM -rf "$lf"
     done
 }
 
