@@ -211,34 +211,35 @@ jobDir=`  $SED -n -e '/^jobDir:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"
 jobFile=` $SED -n -e '/^jobFile:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 modName=` $SED -n -e '/^modName:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 jobParms=`$SED -n -e '/^jobParms:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-
-if [ -z "$modName" ]; then
-    [ -f ${jobDir}/$JOB_CONTROL ]                    && . ${jobDir}/$JOB_CONTROL
-    [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
-
-    modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
+{
+    if [ -z "$modName" ]; then
+        [ -f ${jobDir}/$JOB_CONTROL ]                    && . ${jobDir}/$JOB_CONTROL
+        [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
+    
+        modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
+            ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
         ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
-    ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
-    rc=$?
-
-    if [ $rc -eq 0 -a -f "${modListPath}" ]; then
-        #sucessful so save jobParms in modList
-        parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
-        $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
-    fi
-
-else
-    [ -f ${jobDir}/$JOB_CONTROL ]                               && . ${jobDir}/$JOB_CONTROL
-    [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
-    [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
-
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
+        rc=$?
+    
+        if [ $rc -eq 0 -a -f "${modListPath}" ]; then
+            #sucessful so save jobParms in modList
+            parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
+            $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
+        fi
+    
+    else
+        [ -f ${jobDir}/$JOB_CONTROL ]                               && . ${jobDir}/$JOB_CONTROL
+        [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
+        [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
+    
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
+            ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
         ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
-    ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
-    rc=$?
-fi
-[ "$DEBUG" ] && $ECHO "queueRunner_$qrNum (pid=$$) job return code=$rc"
+        rc=$?
+    fi
+    $PRINTF '\n%s\n' "queueRunner_$qrNum (pid=$$) job return code=$rc"
+} >${LOG_ROOT}/${jobFile}_${modName}.jobLog 2>&1
 
 
 #----------------

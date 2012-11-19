@@ -505,7 +505,7 @@ doList () {
     local modComment
     local auto
     local singleMod="$MODULE"    #if -s option specified then MODULE will be set
-    $CAT "$modListPath" | while read modName modComment; do
+    while read modName modComment; do
         #WARNING:  this loop is reading from stdin so any contained command that reads stdin will cause problems
  
         #catch the case where a single module has been specified
@@ -529,9 +529,8 @@ doList () {
                 $PRINTF "\n\n\n"
             fi
         fi
-    done 
+    done <<< "`$CAT $modListPath`"
     $ECHO
-
     $RM -f "$modListPath"
     return $rc
 }
@@ -856,7 +855,7 @@ doModule_file () {
                            "`$PRINTF 'rc=%d'          $rcDetail `" \
                            $SRC_NAME $MODULE
             } >> "${modDir}/status"
-            rcReturn=$rcDetial
+            rcReturn=$rcDetail
             ;;
     esac
     return $rcReturn
