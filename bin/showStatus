@@ -151,9 +151,8 @@ isQueued () {
 # status reporting routines
 ###############################################################################
 jobControlStatus () {
-    local statusFile
-    local jobName
     local jobPath
+    local jobName
 
     local jobStatusLine
     local modStatusLine
@@ -177,15 +176,14 @@ jobControlStatus () {
 #    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "-------------------------------" "-------" "------------------" "----------"
     $FIND $JOB_ROOT -type d -name $findName \
     | while read statusDir; do
-        statusFile=${statusDir##*/}
-        jobName=${statusFile%.status}
         jobPath=${statusDir%.status}
+        jobName=${jobPath##*/}
 
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
         curState=`$ECHO $jobStatusLine | parseAssignment curState`
         curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
         isSuspect=`isItemSuspect "$curState" "$curDate"`
-        isSuspect=`isQueued     "$jobName" "_listModules" "$isSuspect"`
+        isSuspect=`isQueued     "$jobName" "$JOB_MODLIST_STATUS" "$isSuspect"`
         age=`dateDiffFmt "$curDate" "$NOW_DATE"`
         $PRINTF "%-40s     %s %s %s %s\n" "$jobName" "$isSuspect" "$curState" "$curDate" "$age"
 
