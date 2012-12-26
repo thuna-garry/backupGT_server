@@ -150,9 +150,10 @@ $ECHO jobFile:  $jobFile  >> $tmpPath
 $ECHO modName:  $modName  >> $tmpPath
 $ECHO jobParms: "$@"      >> $tmpPath
 
-# check that the candidate file is not a duplicate of an already queued job
+# check that the candidate file is not a duplicate of an
+# already queued or running job
 crc=`$CKSUM $tmpPath | $SED -e 's/^\([[:alnum:]]*\).*/\1/'`
-isDup=`$FIND $QUEUE_ROOT -type f -name qj_\*_$crc`
+isDup=`$FIND $QUEUE_ROOT -type f -name '*qj_*_'$crc`
 if [ -z "$isDup" ]; then
     timeStamp=`$DATE -u +${DATE_FORMAT}z`
     qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
