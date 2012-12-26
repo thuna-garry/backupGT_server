@@ -9,4 +9,4 @@
 . ${0%/*}/common.lib
 
 
-find $JOB_ROOT -name '*.status' -type d -exec rm -rf {} \; 2>&1
+find $JOB_ROOT -name '*.status' -type d -exec rm -rf {} \; 2>/dev/null

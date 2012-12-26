@@ -77,7 +77,6 @@
 #             backup server may have different STORAGE_DSs (both in name and
 #             depth) and they are not (nor need to be) known to each other.
 #
-#
 #   origHost  scope: rsync,tar   suppliedBy: targetHost (optional)
 #             values: a valid (DNS) host name 
 #             Where the target host has a backup repository for some other
@@ -134,7 +133,7 @@
 #   lastSnap  scope: zfs,zfs.rsync    suppliedBy: backupServer (required)
 #             values: a valid zfs snapshot name
 #             When backing up zfs snapshots incrementally the target host
-#             needs to know the last snapshot that has been cloned to the
+#             needs to know the last snapshot that has been received by the
 #             backup server.  This option communicates to the target host
 #             the snapshot name (that portion of the full name which appears
 #             after the '@'). 
@@ -910,6 +909,7 @@ doModule_zfs2 () {
     else
         $ECHO -n "$dataset" does not exist on this system. Creating...
         $SUDO $ZFS create -p "$dataset"
+        $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes "$dataset"
         $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$ZFS list -H -r -o mountpoint $dataset`
         $ECHO    " done."
         lastSnap=""
