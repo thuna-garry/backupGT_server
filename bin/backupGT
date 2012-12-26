@@ -616,7 +616,10 @@ doModule_file () {
     else
         # create the modDir
         if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
-            $SUDO $ZFS create -p -o mountpoint=$modDir $STORAGE_DS/$useHost/$useMod
+            $SUDO $ZFS create -p                         $STORAGE_DS/$useHost/$useMod
+            $SUDO $ZFS set mountpoint=$modDir            $STORAGE_DS/$useHost/$useMod
+            $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $STORAGE_DS/$useHost/$useMod
+            $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $STORAGE_DS/$useHost/$useMod
         else
             $MKDIR -p -m 750 $modDir
         fi
@@ -910,6 +913,7 @@ doModule_zfs2 () {
         $ECHO -n "$dataset" does not exist on this system. Creating...
         $SUDO $ZFS create -p "$dataset"
         $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes "$dataset"
+        $SUDO $ZFS set ${ZFS_UPROP_METHOD}=zfs    "$dataset"
         $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$ZFS list -H -r -o mountpoint $dataset`
         $ECHO    " done."
         lastSnap=""

@@ -27,6 +27,7 @@ JOB_MODLIST_STATUS="%modList"
 # be being made to a backed-up data set).
 #-------------------------------------------------------
 ZFS_UPROP_IS_BACKUP="backupgt:is_backup"   # user prop to mark dataset as being a backup (yes or no)
+ZFS_UPROP_METHOD="backupgt:method"         # method by which data was received
 
 
 ################################################################################
