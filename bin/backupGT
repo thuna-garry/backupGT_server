@@ -187,7 +187,7 @@ fi
 LAST_MODIFIED_DATE='2012.06.20'
 
 DATE_CMD="$DATE -u +${DATE_FORMAT}z"
-ELAPSED_CMD="$DATE +${TS_FORMAT}"
+ELAPSED_CMD="$DATE +%s"
 
 
 ###############################################################################
