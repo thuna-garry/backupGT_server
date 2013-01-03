@@ -128,7 +128,7 @@ needToQueue () {
                 needed=1  #false
                 [ "$VERBOSE" ] && $ECHO "          . curState=$curState but retry on failure disabled (JOB_RETRY_INTERVAL=0)"
             else
-                if isDateStampTooOld $lastFailureDate $JOB_INTERVAL; then
+                if isDateStampTooOld $lastFailureDate $JOB_RETRY_INTERVAL; then
                     needed=0  #true
                     [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState retry interval $JOB_RETRY_INTERVAL expired"
                 else
