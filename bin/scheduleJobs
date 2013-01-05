@@ -20,7 +20,7 @@
 #   When present (and recent) each module listed will be checked to see that it
 #   has had a successful completion within the JOB_INTERVAL (specified in the
 #   JOB_CONTROL file). If not it will be scheduled (enqueued) to run.  Failed
-#   jobs will only be re-scheduled after a minimum wait of JOB_RETRY_INTERVAL.  # 
+#   jobs will only be re-scheduled after a minimum wait of JOB_RETRY_INTERVAL.
 #
 # Job Status
 #   Associated with each job is a statud directory named the same as the jobFile
@@ -108,32 +108,32 @@ needToQueue () {
     local statusPath="${statusDir}/${modName}"
     local statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
 
-    local curState=`       $ECHO "$statLine" | parseAssignment curState`
+    local runState=`       $ECHO "$statLine" | parseAssignment runState`
     local lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
     local lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
             
-    case x$curState in
+    case x$runState in
         xSUCCESS)
             if isDateStampTooOld $lastSuccessDate $JOB_INTERVAL; then
                 needed=0  #true
-                [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState too old (job interval $JOB_INTERVAL)"
+                [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: runState=$runState too old (job interval $JOB_INTERVAL)"
             
             else
                 needed=1  #false
-                [ "$VERBOSE" ] && $ECHO "          . curState=$curState sufficiently recent (job interval $JOB_INTERVAL)"
+                [ "$VERBOSE" ] && $ECHO "          . runState=$runState sufficiently recent (job interval $JOB_INTERVAL)"
             fi
             ;;
         xFAILURE)
             if [ 0"$JOB_RETRY_INTERVAL" -eq 0 ]; then
                 needed=1  #false
-                [ "$VERBOSE" ] && $ECHO "          . curState=$curState but retry on failure disabled (JOB_RETRY_INTERVAL=0)"
+                [ "$VERBOSE" ] && $ECHO "          . runState=$runState but retry on failure disabled (JOB_RETRY_INTERVAL=0)"
             else
                 if isDateStampTooOld $lastFailureDate $JOB_RETRY_INTERVAL; then
                     needed=0  #true
-                    [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: curState=$curState retry interval $JOB_RETRY_INTERVAL expired"
+                    [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: runState=$runState retry interval $JOB_RETRY_INTERVAL expired"
                 else
                     needed=1  #false
-                    [ "$VERBOSE" ] && $ECHO "          . curState=$curState too recent (retry interval $JOB_RETRY_INTERVAL)"
+                    [ "$VERBOSE" ] && $ECHO "          . runState=$runState too recent (retry interval $JOB_RETRY_INTERVAL)"
                 fi
             fi
             ;;

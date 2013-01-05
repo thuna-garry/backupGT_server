@@ -19,7 +19,7 @@
 #   Are files with names of the form "qj_pp-timestamp_desc_crc32", where
 #     qj:        literal 'qj' (abbr "queued job")
 #     pp:        priority represented by a two digit integer (00=highest)
-#     timestamp: the UTC seconds since the epoch
+#     timestamp: the local dateTime YYYY.MM.DD-HHMMSS when the job was queued
 #     desc:      arbitrary human readable string (generally jobName_modName)
 #     crc32:     the checksum of the file contents
 #
@@ -143,12 +143,13 @@ $MKDIR -p $QUEUE_ROOT
 
 # create a candidate queue file and populate
 tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXX`
-[ "$VERBOSE" ] && $ECHO "            canadidate jobFile: $tmpPath"
+#[ "$VERBOSE" ] && $ECHO "            candidate jobFile: $tmpPath"
 
-$ECHO jobDir:   $jobDir   >> $tmpPath
-$ECHO jobFile:  $jobFile  >> $tmpPath
-$ECHO modName:  $modName  >> $tmpPath
-$ECHO jobParms: "$@"      >> $tmpPath
+$ECHO jobPath:  $jobDir/$jobFile   >> $tmpPath
+$ECHO jobDir:   $jobDir            >> $tmpPath
+$ECHO jobFile:  $jobFile           >> $tmpPath
+$ECHO modName:  $modName           >> $tmpPath
+$ECHO jobParms: "$@"               >> $tmpPath
 
 # check that the candidate file is not a duplicate of an
 # already queued or running job

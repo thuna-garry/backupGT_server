@@ -110,22 +110,23 @@ convertOldModStatus () {
  
     # convert the status line from old format
     if $ECHO "$statLine" | $GREP -q '^[2]'; then
-        statLine="curDate=$statLine"
+        statLine="runDate=$statLine"
         statLine=${statLine/[files: /files=}
         statLine=${statLine/[MBytes: /MBytes=}
         statLine=${statLine/[listGen: /listGen=}
         statLine=${statLine/[totTime: /totTime=}
         statLine=${statLine/[rc: /rc=}
+        statLine=${statLine/]/}
         if $ECHO "$statLine" | $GREP -q 'rc=0'; then
-            statLine=`$ECHO $statLine | makeAssignment curState SUCCESS`
+            statLine=`$ECHO $statLine | makeAssignment runState SUCCESS`
         else
-            statLine=`$ECHO $statLine | makeAssignment curState FAILURE`
+            statLine=`$ECHO $statLine | makeAssignment runState FAILURE`
         fi
     fi
 
     # convert the date from old format
-    local statDate=`$ECHO $statLine | parseAssignment curDate`
-    statLine=`$ECHO $statLine | makeAssignment curDate ${statDate/_/-}`
+    local statDate=`$ECHO $statLine | parseAssignment runDate`
+    statLine=`$ECHO $statLine | makeAssignment runDate ${statDate/_/-}`
 
     # return the converted statline
     $ECHO $statLine
@@ -156,8 +157,8 @@ jobControlStatus () {
 
     local jobStatusLine
     local modStatusLine
-    local curState
-    local curDate
+    local runState
+    local runDate
     local isSuspect
     local age
 
@@ -180,22 +181,22 @@ jobControlStatus () {
         jobName=${jobPath##*/}
 
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
-        curState=`$ECHO $jobStatusLine | parseAssignment curState`
-        curDate=` $ECHO $jobStatusLine | parseAssignment curDate`
-        isSuspect=`isItemSuspect "$curState" "$curDate"`
+        runState=`$ECHO $jobStatusLine | parseAssignment runState`
+        runDate=` $ECHO $jobStatusLine | parseAssignment runDate`
+        isSuspect=`isItemSuspect "$runState" "$runDate"`
         isSuspect=`isQueued     "$jobName" "$JOB_MODLIST_STATUS" "$isSuspect"`
-        age=`dateDiffFmt "$curDate" "$NOW_DATE"`
-        $PRINTF "%-40s     %s %s %s %s\n" "$jobName" "$isSuspect" "$curState" "$curDate" "$age"
+        age=`dateDiffFmt "$runDate" "$NOW_DATE"`
+        $PRINTF "%-40s     %s %s %s %s\n" "$jobName" "$isSuspect" "$runState" "$runDate" "$age"
 
         ls $statusDir | while read modStatFile; do
             [ "$modStatFile" = "${JOB_MODLIST_STATUS}" ] && continue
             modStatusLine=`tail -1 ${statusDir}/${modStatFile}`
-            curState=`$ECHO $modStatusLine | parseAssignment curState`
-            curDate=` $ECHO $modStatusLine | parseAssignment curDate`
-            isSuspect=`isItemSuspect "$curState" "$curDate"`
+            runState=`$ECHO $modStatusLine | parseAssignment runState`
+            runDate=` $ECHO $modStatusLine | parseAssignment runDate`
+            isSuspect=`isItemSuspect "$runState" "$runDate"`
             isSuspect=`isQueued     "$jobName" "$modStatFile" "$isSuspect"`
-            age=`dateDiffFmt "$curDate" "$NOW_DATE"`
-            $PRINTF "    %-40s %s %s %s %s\n" "$modStatFile" "$isSuspect" "$curState" "$curDate" "$age"
+            age=`dateDiffFmt "$runDate" "$NOW_DATE"`
+            $PRINTF "    %-40s %s %s %s %s\n" "$modStatFile" "$isSuspect" "$runState" "$runDate" "$age"
         done
     done
     [ "$SCRIPTED_MODE" ] || $ECHO
@@ -215,8 +216,8 @@ targetHostStatus () {
     local curHost
 
     local statusLine
-    local curState
-    local curDate
+    local runState
+    local runDate
     local isSuspect
     local age
 
@@ -249,15 +250,15 @@ targetHostStatus () {
         if [ "$itemFound" = 'status' ]; then
             statusLine=`$TAIL -1 $f`
             statusLine=`convertOldModStatus $statusLine`
-            curState=`$ECHO $statusLine | parseAssignment curState`
-            curDate=` $ECHO $statusLine | parseAssignment curDate`
-            isSuspect=`isItemSuspect "$curState" "$curDate"`
+            runState=`$ECHO $statusLine | parseAssignment runState`
+            runDate=` $ECHO $statusLine | parseAssignment runDate`
+            isSuspect=`isItemSuspect "$runState" "$runDate"`
             isSuspect=`isQueued      "$hostName" "$modName" "$isSuspect"`
-            age=`dateDiffFmt "$curDate" "$NOW_DATE"`
+            age=`dateDiffFmt "$runDate" "$NOW_DATE"`
             
-            statusLine=`$ECHO $statusLine | delAssignment curState`
-            statusLine=`$ECHO $statusLine | delAssignment curDate`
-            $PRINTF "    %-25s %s %s %s %s %s\n" "$modName" "$isSuspect" "$curState" "$curDate" "$age" "$statusLine"
+            statusLine=`$ECHO $statusLine | delAssignment runState`
+            statusLine=`$ECHO $statusLine | delAssignment runDate`
+            $PRINTF "    %-25s %s %s %s %s %s\n" "$modName" "$isSuspect" "$runState" "$runDate" "$age" "$statusLine"
         else
             isSuspect=`isQueued     "$hostName" "$modName" "!!"`
             $PRINTF "    %-25s %s %s %s\n" "$modName" "$isSuspect" "FAILURE WIP found:" "$f"

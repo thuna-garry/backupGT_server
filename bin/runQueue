@@ -49,14 +49,14 @@ printFullUsage() {
     $ECHO "   if called without the runnerNumber parameter then QUEUE_RUNNERS"
     $ECHO "   instances will be spawned each with a distinct runnerNumber"
     $ECHO 
-    $ECHO " If the queued job does not specify a module then the job will be invoked"
-    $ECHO " with the -j option, and if a module is specified the job will be invoked"
-    $ECHO " with the -s option."
-    $ECHO 
     $ECHO " All job files must accept additional command line parameters and in turn "
     $ECHO " append them to the command line when calling backupGT.  Furthermore the"
     $ECHO " return code from the job file should be 0 for success, non-zero for failure"
     $ECHO " as returned from backupGT."
+    $ECHO 
+    $ECHO " If the queued job does not specify a module then the job will be invoked"
+    $ECHO " with backupGT's -j option, and if a module is specified the job will be"
+    $ECHO " invoked with backupGT's with the -s option."
     exit 1
 }
 
@@ -153,7 +153,7 @@ for mutex in $queueDir/mutex_${qrNum}*; do
         break
     fi
     mutexPid=`$CAT $mutex`
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$): checking ${mutex##*/} (pid=$mutexPid)"
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) checking ${mutex##*/} (pid=$mutexPid)"
     if $PS -o pid,command -p $mutexPid | $GREP -q "^$mutexPid"; then
         [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) another istance is controlling - exiting"
         $RM -f $thisMutex
@@ -164,7 +164,7 @@ for mutex in $queueDir/mutex_${qrNum}*; do
         $RM -f $mutex
     fi
 done
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$): has control mutex=${thisMutex##*/}"
+[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) has control mutex=${thisMutex##*/}"
 
 
 #----------------
@@ -181,8 +181,22 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 
 #----------------
 # get the head of the queue
+#     We don't just want to grab the obvious first entry from the queue but the first
+#     entry that is not for the same jobFile as an already running job.  This is because
+#     any one jobFile will be pull data from a particular host, and want to minimize
+#     having multiple concurrent jobs all trying to pull from the same server.  So (except
+#     where there are multiple jobFiles which pull from the same host) we can prevent this
+#     buy having each concurrent queueRunner based on a different jobFile.
 #----------------
-firstQueuedJobPath=`$LS $queueDir/qj_* 2>/dev/null | $HEAD -1`
+exclusionListPath=/tmp/${0##*/}.$$
+awk '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $queueDir/mx_* > $exclusionListPath 2>/dev/null
+firstQueuedJobPath=$(
+    awk '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $queueDir/qj_*  \
+        | grep -v -f $exclusionListPath                                                    \
+        | awk 'NR == 1 {print $1}'                                                         \
+    )
+rm -f $exclusionListPath
+
 if [ -z "$firstQueuedJobPath" ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) queue is empty - exiting"
     $RM -f $thisMutex
@@ -250,15 +264,15 @@ statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}"
 statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
 lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
 lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
-statLine=`$ECHO "$timeStamp" | makeAssignment curDate $timeStamp`
+statLine=`$ECHO "" | makeAssignment runDate $timeStamp`
 if [ "$rc" -eq 0 ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) success - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curState SUCCESS`
+    statLine=`$ECHO "$statLine" | makeAssignment runState SUCCESS`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $timeStamp`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $lastFailureDate`
 else
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) failure - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment curState FAILURE`
+    statLine=`$ECHO "$statLine" | makeAssignment runState FAILURE`
     statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $lastSuccessDate`
     statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $timeStamp`
 fi

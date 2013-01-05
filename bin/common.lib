@@ -101,9 +101,6 @@ isDateStampTooOld () {
 
     local curDS=`$DATE -u +${DATE_FORMAT}`
     local elapsed=`dateDiff -m $eventDateStamp $curDS $curTs - $eventTs`
-echo cur=$curDS     event=$eventDateStamp     `dateDiffFmt $eventDateStamp $curDS`
-echo elapsed=$elapsed   max=$maxAge
-[ "$elapsed" -gt "$maxAge" ] && echo yes too old || echo not too old
     [ "$elapsed" -gt "$maxAge" ] && return 0 || return 1
 }
 
