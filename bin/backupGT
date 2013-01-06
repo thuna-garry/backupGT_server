@@ -193,6 +193,12 @@ ELAPSED_CMD="$DATE +%s"
 ###############################################################################
 # process options
 ###############################################################################
+printMiniUsage() {
+    $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
+    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j [<modListPath>]]"
+    $ECHO "          [-v] [-D]"
+}
+
 printFullUsage() {
     $ECHO "###############################################################################"
     $ECHO "# backupGT for servers"
@@ -200,9 +206,7 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
-    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j [<modListPath>]]"
-    $ECHO "          [-v] [-D]"
+    printMiniUsage
     $ECHO "Options:"
     $ECHO "   -h   Hostname for this backup"
     $ECHO "   -t   The transport type to use for communication with the target host.  Must be one of "
@@ -256,14 +260,8 @@ printFullUsage() {
     $ECHO '       SSH_OPTS    default: "-l backupGT"'
     $ECHO '       RSYNC_HOST  default: hostname supplied as -h'
     $ECHO '       RSYNC_OPTS  default: "-vi"'
-    exit 1
 }
 
-
-printMiniUsage() {
-    $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
-    $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j [modListPath]] [-v] [-D]"
-}
 
 
 global_vars () {  #those that need to be reset for each module
@@ -299,8 +297,8 @@ parseOptions() {
                     rsync)  TRANSPORT=$val ;;
                     tunnel) TRANSPORT=$val ;;
                     ssh)    TRANSPORT=$val ;;
-                    *)      $ECHO "Invalid type of transport: $TRANSPORT" 1>&2
-                            printMiniUsage 1>&2
+                    *)      printMiniUsage 1>&2
+                            $ECHO "Invalid type of transport: $TRANSPORT" 1>&2
                             exit 1
                             ;;
                 esac
@@ -354,16 +352,16 @@ parseOptions() {
                 case ${OPTARG} in
                     j) JOB_MOD_LIST_ONLY=1 ;;   # argument not required
                      
-                    *) $ECHO "Option -${OPTARG} requires an argument." 1>&2
-                       printMiniUsage 1>&2
+                    *) printMiniUsage 1>&2
+                       $ECHO "Option -${OPTARG} requires an argument." 1>&2
                        exit 1
                        ;;
                 esac
                 ;;
 
             *) # case could be \? (literal "?")
-                $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                 printFullUsage 1>&2
+                $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                 exit 1
                 ;;
         esac

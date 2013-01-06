@@ -54,6 +54,10 @@ LAST_MODIFIED_DATE='2012.10.14'
 ###############################################################################
 # process options
 ###############################################################################
+printMiniUsage() {
+    $ECHO "Usage: $0 [-v]"
+}
+
 printFullUsage() {
     $ECHO "###############################################################################"
     $ECHO "# scheduleJobs (part of the backupGT suite)"
@@ -61,7 +65,7 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO "Usage: $0 [-v]"
+    printMiniUsage
     $ECHO "   search the JOB_ROOT for job files that have not successfully completed"
     $ECHO "   within their prescribed JOB_INTERVAL (as specified in the JOB_CONTROL"
     $ECHO "   file to be found in the same directory as the job file) and queue them"
@@ -69,12 +73,6 @@ printFullUsage() {
     $ECHO ""
     $ECHO "Options:"
     $ECHO "  -v  verbose: prints detail of processing to stdout. "
-    exit 1
-}
-
-
-printMiniUsage() {
-    $ECHO "Usage: $0 [-v]"
 }
 
 
@@ -82,12 +80,12 @@ parseOptions() {
     while getopts ":v" arg; do
         case $arg in
             v) VERBOSE="1" ;;
-            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
-               printFullUsage 1>&2
+            :) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} requires an argument." 1>&2
                exit 1
                ;;
-            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
-               printFullUsage 1>&2
+            *) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                exit 1
                ;;
         esac
@@ -170,7 +168,8 @@ checkRunningUser
 parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 # find all the job directories with a JOB_CONTROL file
-for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
+
+$FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
     jobDir=${jobControlFile%/*}
     [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
 
@@ -181,7 +180,7 @@ for jobControlFile in `$FIND $JOB_ROOT -name $JOB_CONTROL`; do
     . $jobControlFile
 
     # find all the jobs in the current job directory
-    for jobPath in `$FIND $jobDir -perm -0100 -type f -mindepth 1 -maxdepth 1`; do
+    $FIND -L $jobDir -perm -0100 \( -type f -or -type l \) -mindepth 1 -maxdepth 1 | while read jobPath; do
         jobFile=${jobPath##*/}
         [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
 

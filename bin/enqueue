@@ -63,6 +63,10 @@ LAST_MODIFIED_DATE='2012.10.14'
 ###############################################################################
 # process options
 ###############################################################################
+printMiniUsage() {
+    $ECHO "Usage: $0 -j <jobPath> -s <modName> [-p <priority>] [-v]"
+}
+
 printFullUsage() {
     $ECHO "###############################################################################"
     $ECHO "# enqueue (part of the backupGT suite)"
@@ -70,7 +74,7 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO "Usage: $0 -j <jobPath> -s <modName> [-p <priority>] [-v]"
+    printMiniUsage
     $ECHO "Options:"
     $ECHO "   -j <jobPath>   The canonical path to the executable job file.  If the jobPath"
     $ECHO "                  does not begin with a '/' then it is assumed to be a path"
@@ -83,12 +87,6 @@ printFullUsage() {
     $ECHO "   -p <priority>  The priority as a two digit integer where 00 has the highest"
     $ECHO "                  priority and 99 the lowest.  Default = 50"
     $ECHO "   -v             Print verbose output"
-    exit 1
-}
-
-
-printMiniUsage() {
-    $ECHO "Usage: $0 -j <jobPath> -s <modName> [-p <priority>] [-v]"
 }
 
 
@@ -100,18 +98,20 @@ parseOptions() {
             s) modName="${OPTARG}";  sOptionSupplied="1" ;;
             p) priority="${OPTARG}" ;;
             v) VERBOSE="1" ;;
-            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
-               printFullUsage 1>&2
+            :) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               exit 1
                ;;
-            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
-               printFullUsage 1>&2
+            *) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
+               exit 1
                ;;
         esac
     done
 
     if [ -z "$jobPath" ]; then
-        $ECHO "Option -j must be supplied." 1>&2
         printMiniUsage 1>&2
+        $ECHO "Option -j must be supplied." 1>&2
         exit 1
     elif [ "${jobPath:0:1}" != "/" ]; then
         jobPath=${JOB_ROOT}/${jobPath}
@@ -120,8 +120,8 @@ parseOptions() {
     jobFile=${jobPath##*/}
 
     if [ -z "$sOptionSupplied" ]; then
-        $ECHO "Option -s must be supplied." 1>&2
         printMiniUsage 1>&2
+        $ECHO "Option -s must be supplied." 1>&2
         exit 1
     fi
 

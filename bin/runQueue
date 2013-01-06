@@ -29,6 +29,10 @@ LAST_MODIFIED_DATE='2012.10.21'
 ###############################################################################
 # process options
 ###############################################################################
+printMiniUsage() {
+    $ECHO "Usage: $0 [-v] [-D] [<runnerNumber>]"
+}
+
 printFullUsage() {
     $ECHO "###############################################################################"
     $ECHO "# runQueue (part of the backupGT suite)"
@@ -36,7 +40,7 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO "Usage: $0 [-v] [-D] [<runnerNumber>]"
+    printMiniUsage
     $ECHO "   This script spawns multiple copies of itself and each copy pulls and runs"
     $ECHO "   the job at the top of the queue (priority / FIFO order)."
     $ECHO "Options:"
@@ -57,12 +61,6 @@ printFullUsage() {
     $ECHO " If the queued job does not specify a module then the job will be invoked"
     $ECHO " with backupGT's -j option, and if a module is specified the job will be"
     $ECHO " invoked with backupGT's with the -s option."
-    exit 1
-}
-
-
-printMiniUsage() {
-    $ECHO "Usage: $0 [-v] [-D] [<queueName>]"
 }
 
 
@@ -74,12 +72,12 @@ parseOptions() {
                ;&
             v) VERBOSE="1"
                ;;
-            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
-               printFullUsage 1>&2
+            :) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} requires an argument." 1>&2
                exit 1
                ;;
-            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
-               printFullUsage 1>&2
+            *) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                exit 1
                ;;
         esac
@@ -121,6 +119,7 @@ case "$#" in
        ;;
 
     *) printFullUsage 1>&2
+       exit 1
        ;;
 esac
 

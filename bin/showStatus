@@ -30,6 +30,10 @@ SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED -e 's/ /=/g'`
 ###############################################################################
 # process options
 ###############################################################################
+printMiniUsage() {
+    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-q] [-u] [-H]"
+}
+
 printFullUsage() {
     $ECHO "###############################################################################"
     $ECHO "# showStatus (part of the backupGT suite)"
@@ -37,7 +41,7 @@ printFullUsage() {
     $ECHO "# Created: 11/10/2009"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
     $ECHO "###############################################################################"
-    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-u]"
+    printMiniUsage
     $ECHO "   display status for backup jobs and target hosts"
     $ECHO "Options:"
     $ECHO "  -h    only print the stats for the named targetHost"
@@ -47,12 +51,6 @@ printFullUsage() {
     $ECHO "  -u    include a summary for space utilization"
     $ECHO "  -H    scripted mode do not display any headers, footers or other decoration"
     $ECHO "If neither -j, -t, -q, or -u is specified all are assumed"
-    exit 1
-}
-
-
-printMiniUsage() {
-    $ECHO "Usage: $0 [-h <targetHost>] [-j] [-t] [-q] [-u]"
 }
 
 
@@ -71,12 +69,12 @@ parseOptions() {
             q) SHOW_QUEUE_STATUS=1 ;	SHOW_ALL= ;;
             u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
             H) SCRIPTED_MODE=1  ;	SHOW_ALL= ;;
-            :) $ECHO "Option -${OPTARG} requires an argument." 1>&2
-               printFullUsage 1>&2
+            :) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} requires an argument." 1>&2
                exit 1
                ;;
-            *) $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
-               printFullUsage 1>&2
+            *) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
                exit 1
                ;;
         esac
