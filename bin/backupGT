@@ -875,7 +875,10 @@ doModule_zfs () {
     TMP_DIR="`$ZFS list -H -r -o mountpoint $TMP_DS`"
     $SUDO $CHOWN $USER_NUM:$GROUP_NUM $TMP_DIR
 
-    local workLog=${LOG_ROOT}/${MODULE}.log
+    local logDir="${LOG_ROOT}/${SRC_NAME}"
+    local workLog="${logDir}/${MODULE}.log"
+    mkdir -p "$logDir"
+
     doModule_zfs2 "$@" 2>&1 | $TEE -a $workLog
     return ${PIPESTATUS[0]}
 }
@@ -889,7 +892,10 @@ doModule_zfs2 () {
     local timeStamp=`$DATE_CMD`
     local elapsedStart=`$ELAPSED_CMD`
     local workDir=${TMP_DIR}
-    local workLog=${LOG_ROOT}/${MODULE}.log
+
+    local logDir="${LOG_ROOT}/${SRC_NAME}"
+    local workLog="${logDir}/${MODULE}.log"
+    mkdir -p "$logDir"
 
     [ "$DEBUG" ] && $PRINTF 'debug: method   = "%s"\n' $method      1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: relDS    = "%s"\n' $relDS       1>&2
