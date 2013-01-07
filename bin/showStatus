@@ -173,7 +173,7 @@ jobControlStatus () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 #    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "Host/Module                    " "Status " "Date              " "Age       "
 #    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "-------------------------------" "-------" "------------------" "----------"
-    $FIND $JOB_ROOT -type d -name $findName \
+    $FIND $JOB_ROOT -type d -name "$findName" \
     | while read statusDir; do
         jobPath=${statusDir%.status}
         jobName=${jobPath##*/}
