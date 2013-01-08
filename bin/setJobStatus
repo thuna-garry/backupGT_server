@@ -1,0 +1,200 @@
+#! /usr/local/bin/bash
+
+###############################################################################
+# This script sets the status of jobs/modules to force the job/module to be
+# scheduled at the next opportunity
+###############################################################################
+
+
+###############################################################################
+# include user defined globals and the common library
+###############################################################################
+. ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
+
+# redefine $SUDO to include the configured user
+SUDO=""
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+fi
+
+
+###############################################################################
+# globals
+###############################################################################
+LAST_MODIFIED_DATE='2013.01.06'
+
+
+###############################################################################
+# process options
+###############################################################################
+printMiniUsage() {
+    $ECHO "Usage: $0 [-j <jobPath>] [-J] [-m <module>] [-M] "
+    $ECHO "          -s SUCCESS|FAILURE|RESET|SUSPEND | -u "
+    $ECHO "          [-v]"
+}
+
+printFullUsage() {
+    $ECHO "###############################################################################"
+    $ECHO "# clearJobStatus (part of the backupGT suite)"
+    $ECHO "# Author: Garry Thuna"
+    $ECHO "# Created: 2013.01.06"
+    $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
+    $ECHO "###############################################################################"
+    printMiniUsage
+    $ECHO "   Modifies the status file for a job.  The type of modification is controlled by"
+    $ECHO "   the -s or -u option."
+    $ECHO " SUCCESS"
+    $ECHO "   Appends a SUCCESS record to the end of each status file and sets the date of"
+    $ECHO "   last success to be the current time"
+    $ECHO " FAILURE"
+    $ECHO "   Appends a FAILURE record to the end of each status file and sets the date of"
+    $ECHO "   last failure to be the current time"
+    $ECHO " RESET"
+    $ECHO "   Appends a status record to the end of the status file which indicates RESET"
+    $ECHO "   This effectively forces the job to be scheduled at the next opportunity.  This"
+    $ECHO "   can be used to manually override the job control JOB_INTERVAL or JOB_RETRY_FAILED"
+    $ECHO "   settings."
+    $ECHO " SUSPEND"
+    $ECHO "   Appends a status record to the end of the status file to signal that all scheduling"
+    $ECHO "   of this job should be skipped (see the -u option to 'unsuspend')"
+    $ECHO "Options:"
+    $ECHO "   -j <jobPath>"
+    $ECHO "        Specifies the path to a particular jobFile"
+    $ECHO "   -J   Apply status to all jobFiles if -j option not also specified"
+    $ECHO "   -m <module>"
+    $ECHO "        Specifies which module status to modify. If the module is given as '*' or"
+    $ECHO "        '%' then the JOB_MODLIST_STATUS module will be modified."
+    $ECHO "   -M   Apply status to all jobFiles if -m option not also specified"
+    $ECHO "   -s   The literal status to set. Cannot be used with -u"
+    $ECHO "   -u   'Un-SUSPEND' previously suspended jobFile. Cannot be used with -s."
+    $ECHO "   -v   Provide verbose output"
+}
+
+
+parseOptions() {
+    while getopts ":Jj:Mm:s:uv" arg; do
+        case $arg in
+            j) optJobPath=${OPTARG};;
+            J) optJspecified=1;;
+            m) optModule=${OPTARG}
+               [ x"$optModule" = x"*" ] && optModule=$JOB_MODLIST_STATUS
+               [ x"$optModule" = x"%" ] && optModule=$JOB_MODLIST_STATUS
+               ;;
+            M) optMspecified=1;;
+            s) optStatus=${OPTARG}
+               ;;
+            u) optUspecified=1;;
+            v) VERBOSE="1" ;;
+            :) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} requires an argument." 1>&2
+               exit 1
+               ;;
+            *) printFullUsage 1>&2
+               $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
+               exit 1
+               ;;
+        esac
+    done
+    COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
+
+    if [ -z "${optJobPath}${optJspecified}" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Either the -J or -j <jobPath> options must be specified" 1>&2
+        exit 1
+    fi
+    if [ -z "${optModule}${optMspecified}" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Either the -M or -m <module> options must be specified" 1>&2
+        exit 1
+    fi
+
+    if [ -n "$optStatus" -a -n "$optUspecified" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Cannot use the -s and -u options simultaneously." 1>&2
+        exit 1
+    elif [ -z "$optStatus" -a -z "$optUspecified" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Must specify one of -s or -u options." 1>&2
+        exit 1
+    elif [ -n "$optStatus" ]; then
+        case $optStatus in
+            SUCCESS) ;;
+            FAILURE) ;;
+            RESET)   ;;
+            SUSPEND)   ;;
+            *)  printMiniUsage 1>&2
+                $ECHO "Status to set must be specified with the -s options." 1>&2
+                exit 1
+            ;;
+        esac
+    fi
+}
+
+
+###############################################################################
+# main
+###############################################################################
+checkRunningUser
+parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
+
+# if the optJobPath is specified replace with full path but if it is a symlink
+# do not dereferece/follow the link
+if [ -n "$optJobPath" ]; then
+    optJobDir=`$DIRNAME "$optJobPath"`
+    optJobDir=`$READLINK -f "$optJobDir"`
+    optJobPath=`$READLINK -f "$optJobDir"`/${optJobPath##*/}
+fi
+
+# find all the job directories with a JOB_CONTROL file
+$FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlPath; do
+    jobDir=${jobControlPath%/*}
+    [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
+
+    # find all the jobs in the current job directory
+    $FIND -L $jobDir -perm -0100 \( -type f -or -type l \) -mindepth 1 -maxdepth 1 | while read jobPath; do
+        [ -n "$optJobPath" -a "$optJobPath" != "$jobPath" ] && continue
+        [ -d ${jobPath}${JOB_STATUS_DIR_SUFFIX} ]           || continue
+        
+        jobFile=${jobPath##*/}
+        [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
+
+        # modify the status files
+        $FIND ${jobPath}${JOB_STATUS_DIR_SUFFIX} -type f -maxdepth 1 | while read statusPath; do
+            modName=${statusPath##*/}
+            [ -n "$optModule" -a "$optModule" != "$modName" ] && continue
+ 
+            [ "$VERBOSE" ] && $ECHO "        setting status for module $modName"
+            timeStamp=`$DATE -u +${DATE_FORMAT}z`
+            statLine=`grep -v "SUSPEND" $statusPath | tail -1`
+            lastRunState=`   $ECHO "$statLine" | parseAssignment runState`
+            lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
+            lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
+            statLine=`$ECHO "" | makeAssignment runDate $timeStamp`
+            case u${optStatus} in
+                uSUCCESS)
+                    statLine=`$ECHO "$statLine" | makeAssignment runState        SUCCESS`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $timeStamp`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $lastFailureDate`
+                    ;;
+                uFAILURE)
+                    statLine=`$ECHO "$statLine" | makeAssignment runState        FAILURE`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $lastSuccessDate`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $timeStamp`
+                    ;;
+                uRESET|uSUSPEND) 
+                    statLine=`$ECHO "$statLine" | makeAssignment runState        ${optStatus}`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $lastSuccessDate`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $lastFailureDate`
+                    ;;
+                u)
+                    statLine=`$ECHO "$statLine" | makeAssignment runState        $lastRunState`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate $lastSuccessDate`
+                    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate $lastFailureDate`
+                    ;;
+            esac
+            $ECHO "$statLine" >> $statusPath
+        done
+    done
+done 
+

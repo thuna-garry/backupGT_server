@@ -135,6 +135,14 @@ needToQueue () {
                 fi
             fi
             ;;
+        xRESET)
+            needed=0  #true
+            [ "$VERBOSE" ] && $ECHO "          . runState=$runState"
+            ;;
+        xSUSPEND)
+            needed=1  #false
+            [ "$VERBOSE" ] && $ECHO "          . runState=$runState"
+            ;;
         *)
             needed=0  #true   
             [ "$VERBOSE" ] && $ECHO "          . ENQUEUE: no prior job status"
