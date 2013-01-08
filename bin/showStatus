@@ -255,10 +255,10 @@ targetHostStatus () {
             
             statusLine=`$ECHO $statusLine | delAssignment runState`
             statusLine=`$ECHO $statusLine | delAssignment runDate`
-            $PRINTF "    %-25s %s %s %s %s %s\n" "$modName" "$isSuspect" "$runState" "$runDate" "$age" "$statusLine"
+            $PRINTF "    %-40s %s %s %s %s %s\n" "$modName" "$isSuspect" "$runState" "$runDate" "$age" "$statusLine"
         else
             isSuspect=`isQueued     "$hostName" "$modName" "!!"`
-            $PRINTF "    %-25s %s %s %s\n" "$modName" "$isSuspect" "FAILURE WIP found:" "$f"
+            $PRINTF "    %-40s %s %s %s\n" "$modName" "$isSuspect" "FAILURE WIP found:" "$f"
         fi
     done
     [ "$SCRIPTED_MODE" ] || $ECHO

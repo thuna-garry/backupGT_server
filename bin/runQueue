@@ -224,11 +224,9 @@ jobDir=`  $SED -n -e '/^jobDir:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"
 jobFile=` $SED -n -e '/^jobFile:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 modName=` $SED -n -e '/^modName:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 jobParms=`$SED -n -e '/^jobParms:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-jobPath="${jobDir}/${jobFile}"
 
-#logDir="$LOG_ROOT/${jobPath#$JOB_ROOT/}"
 logDir="$LOG_ROOT/$jobFile"
-logPath="${logDir}/${modName}.jobLog"
+logPath="${logDir}/${modName:-$JOB_MODLIST_STATUS}.jobLog"
 mkdir -p "$logDir"
 
 {
@@ -258,7 +256,7 @@ mkdir -p "$logDir"
         ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
         rc=$?
     fi
-    $PRINTF '\n%s\n' "queueRunner_$qrNum (pid=$$) job return code=$rc"
+    [ "$VERBOSE" ] && $PRINTF '%s\n' "queueRunner_$qrNum (pid=$$) job return code=$rc"
 } >> ${logPath} 2>&1
 
 
