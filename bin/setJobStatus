@@ -147,12 +147,12 @@ if [ -n "$optJobPath" ]; then
 fi
 
 # find all the job directories with a JOB_CONTROL file
-$FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlPath; do
+$FIND $JOB_ROOT -name $JOB_CONTROL | sort | while read jobControlPath; do
     jobDir=${jobControlPath%/*}
     [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
 
     # find all the jobs in the current job directory
-    $FIND -L $jobDir -perm -0100 \( -type f -or -type l \) -mindepth 1 -maxdepth 1 | while read jobPath; do
+    $FIND -L $jobDir -perm -0100 \( -type f -or -type l \) -mindepth 1 -maxdepth 1 | sort | while read jobPath; do
         [ -n "$optJobPath" -a "$optJobPath" != "$jobPath" ] && continue
         [ -d ${jobPath}${JOB_STATUS_DIR_SUFFIX} ]           || continue
         
@@ -160,7 +160,7 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlPath; do
         [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
 
         # modify the status files
-        $FIND ${jobPath}${JOB_STATUS_DIR_SUFFIX} -type f -maxdepth 1 | while read statusPath; do
+        $FIND ${jobPath}${JOB_STATUS_DIR_SUFFIX} -type f -maxdepth 1 | sort | while read statusPath; do
             modName=${statusPath##*/}
             [ -n "$optModule" -a "$optModule" != "$modName" ] && continue
  
