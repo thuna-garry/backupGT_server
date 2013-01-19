@@ -602,6 +602,8 @@ doModule_file () {
     [ "$DEBUG" ] && $PRINTF 'debug: workDir  = "%s"\n' $workDir  1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: workLog  = "%s"\n' $workLog  1>&2
 
+    local modDS=$STORAGE_DS/$useHost/$useMod  #when using zfs this will be handy
+
     if [ -d "$modDir" ]; then    
         if [ -d "$newDir" ]; then
             { $ECHO "---------------"
@@ -614,16 +616,30 @@ doModule_file () {
             return
         fi
     else
-        # create the modDir
+        # create the modDir and set it properties
         if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
-            $SUDO $ZFS create -p                         $STORAGE_DS/$useHost/$useMod
-            $SUDO $ZFS set mountpoint=$modDir            $STORAGE_DS/$useHost/$useMod
-            $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $STORAGE_DS/$useHost/$useMod
-            $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $STORAGE_DS/$useHost/$useMod
+            $SUDO $ZFS create -p                         $modDS
+            $SUDO $ZFS set mountpoint=$modDir            $modDS
+            $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
+            $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
         else
             $MKDIR -p -m 750 $modDir
         fi
         $SUDO $CHOWN $USER_NUM:$GROUP_NUM $modDir
+    fi
+
+    # if the modDir is supposed to be a zfs dataset (it may not originally have been)
+    # see if it is a dataset, and if so does it needs to have the user properties
+    # reset (due to target changing the method)
+    if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
+        if [ "`$ZFS list -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
+            if [ "`$ZFS get -o value -H ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
+                $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
+            fi
+            if [ "`$ZFS get -o value -H ${ZFS_UPROP_METHOD} $modDS 2>/dev/null`" != "${method}" ]; then
+                $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
+            fi
+        fi
     fi
 
     # make sure that the workDir (WIP) exists
@@ -912,7 +928,7 @@ doModule_zfs2 () {
     $ECHO "WIP log:      $workLog"
 
     # detmine the last snapshot and make sure the target dataset exists
-    if $ZFS list -o name | $GREP -q "$dataset" ; then
+    if [ "`$ZFS list -o name $dataset 2>/dev/null`" = "$dataset" ] ; then
         lastSnap=`$ZFS list -H -o name -t snapshot -d 1 -s name "$dataset" | $TAIL -1 | $CUT -d '@' -f 2`
         $ECHO lastSnap: $lastSnap
     else
