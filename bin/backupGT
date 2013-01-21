@@ -632,7 +632,7 @@ doModule_file () {
     # see if it is a dataset, and if so does it needs to have the user properties
     # reset (due to target changing the method)
     if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
-        if [ "`$ZFS list -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
+        if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
             if [ "`$ZFS get -o value -H ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
                 $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
             fi
@@ -884,7 +884,7 @@ doModule_zfs () {
     local rc
 
     # ensure that tmporary dataset exists
-    if [ -z "`$ZFS list -o name | grep $TMP_DS`" ] ; then
+    if [ -z "`$ZFS list -H -o name | grep $TMP_DS`" ] ; then
         $SUDO $ZFS create -o quota=$TMP_DS_MAX_SIZE $TMP_DS
     fi
     if [ -n "$TMP_DS_MAX_SIZE" ] ; then
@@ -928,7 +928,7 @@ doModule_zfs2 () {
     $ECHO "WIP log:      $workLog"
 
     # detmine the last snapshot and make sure the target dataset exists
-    if [ "`$ZFS list -o name $dataset 2>/dev/null`" = "$dataset" ] ; then
+    if [ "`$ZFS list -H -o name $dataset 2>/dev/null`" = "$dataset" ] ; then
         lastSnap=`$ZFS list -H -o name -t snapshot -d 1 -s name "$dataset" | $TAIL -1 | $CUT -d '@' -f 2`
         $ECHO lastSnap: $lastSnap
     else
