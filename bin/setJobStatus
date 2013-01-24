@@ -60,13 +60,14 @@ printFullUsage() {
     $ECHO "   of this job should be skipped (see the -u option to 'unsuspend')"
     $ECHO "Options:"
     $ECHO "   -j <jobPath>"
-    $ECHO "        Specifies the path to a particular jobFile"
-    $ECHO "   -J   Apply status to all jobFiles if -j option not also specified"
+    $ECHO "        Specifies the path to a particular jobFile (non absolute paths will be relative"
+    $ECHO "        to JOB_ROOT."
+    $ECHO "   -J   Apply status to all jobFiles if -j option not also specified."
     $ECHO "   -m <module>"
     $ECHO "        Specifies which module status to modify. If the module is given as '*' or"
     $ECHO "        '%' then the JOB_MODLIST_STATUS module will be modified."
-    $ECHO "   -M   Apply status to all jobFiles if -m option not also specified"
-    $ECHO "   -s   The literal status to set. Cannot be used with -u"
+    $ECHO "   -M   Apply status to all jobFiles if -m option not also specified."
+    $ECHO "   -s   The literal status to set. Cannot be used with -u."
     $ECHO "   -u   'Un-SUSPEND' previously suspended jobFile. Cannot be used with -s."
     $ECHO "   -v   Provide verbose output"
 }
@@ -75,13 +76,17 @@ printFullUsage() {
 parseOptions() {
     while getopts ":Jj:Mm:s:uv" arg; do
         case $arg in
-            j) optJobPath=${OPTARG};;
             J) optJspecified=1;;
+            j) case "${OPTARG}" in
+                   /*) optJobPath=${OPTARG}
+                   * ) optJobPath=$JOB_ROOT/${OPTARG}
+               esac
+               ;;
+            M) optMspecified=1;;
             m) optModule=${OPTARG}
                [ x"$optModule" = x"*" ] && optModule=$JOB_MODLIST_STATUS
                [ x"$optModule" = x"%" ] && optModule=$JOB_MODLIST_STATUS
                ;;
-            M) optMspecified=1;;
             s) optStatus=${OPTARG}
                ;;
             u) optUspecified=1;;
@@ -102,10 +107,19 @@ parseOptions() {
         printMiniUsage 1>&2
         $ECHO "Either the -J or -j <jobPath> options must be specified" 1>&2
         exit 1
+    elif [ -n "$optJobPath" -a -n "$optJspecified" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Cannot use the -J and -j options simultaneously." 1>&2
+        exit 1
     fi
+
     if [ -z "${optModule}${optMspecified}" ]; then
         printMiniUsage 1>&2
         $ECHO "Either the -M or -m <module> options must be specified" 1>&2
+        exit 1
+    elif [ -n "$optModule" -a -n "$optMspecified" ]; then
+        printMiniUsage 1>&2
+        $ECHO "Cannot use the -M and -m options simultaneously." 1>&2
         exit 1
     fi
 
