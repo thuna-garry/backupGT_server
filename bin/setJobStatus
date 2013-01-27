@@ -78,8 +78,8 @@ parseOptions() {
         case $arg in
             J) optJspecified=1;;
             j) case "${OPTARG}" in
-                   /*) optJobPath=${OPTARG}
-                   * ) optJobPath=$JOB_ROOT/${OPTARG}
+                   /*) optJobPath=${OPTARG}             ;;
+                   * ) optJobPath=$JOB_ROOT/${OPTARG}   ;;
                esac
                ;;
             M) optMspecified=1;;
