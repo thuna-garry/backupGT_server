@@ -136,9 +136,9 @@ isQueued () {
     local modName="$2"
     local default="$3"   #default string to return
 
-    if   $LS $QUEUE_ROOT/mx_* 2>/dev/null | $GREP -q ${hostName}_${modName}; then
+    if   $LS $QUEUE_ROOT/mx_* 2>/dev/null | $GREP -q "z_${hostName}_${modName}_[0-9]"; then
         $ECHO "$default" | $SED 's/.$/r/'
-    elif $LS $QUEUE_ROOT/qj_* 2>/dev/null | $GREP -q ${hostName}_${modName}; then
+    elif $LS $QUEUE_ROOT/qj_* 2>/dev/null | $GREP -q "z_${hostName}_${modName}_[0-9]"; then
         $ECHO "$default" | $SED 's/.$/q/'
     else
         $ECHO "$default"
@@ -181,7 +181,7 @@ jobControlStatus () {
         runState=`$ECHO $jobStatusLine | parseAssignment runState`
         runDate=` $ECHO $jobStatusLine | parseAssignment runDate`
         isSuspect=`isItemSuspect "$runState" "$runDate"`
-        isSuspect=`isQueued     "$jobName" "$JOB_MODLIST_STATUS" "$isSuspect"`
+        isSuspect=`isQueued      "$jobName" "$JOB_MODLIST_STATUS" "$isSuspect"`
         age=`dateDiffFmt "$runDate" "$NOW_DATE"`
         $PRINTF "\n%-40s     %s %s %s %s\n" "${jobPath#$JOB_ROOT/}" "$isSuspect" "$runState" "$runDate" "$age"
 
