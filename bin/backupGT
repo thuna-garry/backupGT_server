@@ -888,7 +888,9 @@ doModule_zfs () {
         $SUDO $ZFS create -o quota=$TMP_DS_MAX_SIZE $TMP_DS
     fi
     if [ -n "$TMP_DS_MAX_SIZE" ] ; then
-        $SUDO $ZFS set quota=$TMP_DS_MAX_SIZE $TMP_DS
+        if [ `zfs get -H -o value quota $TMP_DS 2>/dev/null` == "none" ]; then
+            $SUDO $ZFS set quota=$TMP_DS_MAX_SIZE $TMP_DS
+        fi
     fi
     TMP_DIR="`$ZFS list -H -r -o mountpoint $TMP_DS`"
     $SUDO $CHOWN $USER_NUM:$GROUP_NUM $TMP_DIR
