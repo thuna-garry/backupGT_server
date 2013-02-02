@@ -60,7 +60,7 @@ printFullUsage() {
     $ECHO 
     $ECHO " If the queued job does not specify a module then the job will be invoked"
     $ECHO " with backupGT's -j option, and if a module is specified the job will be"
-    $ECHO " invoked with backupGT's with the -s option."
+    $ECHO " invoked with backupGT's -s option."
 }
 
 
@@ -236,8 +236,8 @@ mkdir -p "$logDir"
     
         modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
         [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
-            ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
-        ${jobDir}/${jobFile} -j ${modListPath} $jobParms $JOB_EXTRA_PARMS
+            ${jobDir}/${jobFile} -j ${modListPath} $jobParms
+        ${jobDir}/${jobFile} -j ${modListPath} $jobParms
         rc=$?
     
         if [ $rc -eq 0 -a -f "${modListPath}" ]; then
@@ -252,8 +252,8 @@ mkdir -p "$logDir"
         [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
     
         [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
-            ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
-        ${jobDir}/${jobFile} -s "$modName" $jobParms $JOB_EXTRA_PARMS
+            ${jobDir}/${jobFile} -s "$modName" $jobParms
+        ${jobDir}/${jobFile} -s "$modName" $jobParms
         rc=$?
     fi
     [ "$VERBOSE" ] && $PRINTF '%s\n' "queueRunner_$qrNum (pid=$$) job return code=$rc"

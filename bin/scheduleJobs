@@ -189,17 +189,19 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         JOB_INTERVAL=1440      #set default 1 day
         JOB_RETRY_INTERVAL=60  #set default 1 hour
         JOB_PRIORITY=50        #set default
+        JOB_EXTRA_PARMS=""     #set default
         . $jobControlFile
         [ -f "${jobPath}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}${JOB_CONTROL_SUFFIX}"
-        saveJI=$JOB_INTERVAL
-        saveJR=$JOB_RETRY_INTERVAL
-        saveJP=$JOB_PRIORITY
+        saveJI="$JOB_INTERVAL"
+        saveJR="$JOB_RETRY_INTERVAL"
+        saveJP="$JOB_PRIORITY"
+        saveJX="$JOB_EXTRA_PARMS"
         
         #----------------
         # consider the job file itself
         #----------------
         if needToQueue "$jobPath" "$JOB_MODLIST_STATUS"; then
-            callEnqueue "$jobPath" "" "${COMMAND_LINE_PARMS[@]}" 
+            callEnqueue "$jobPath" "" "${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS" 
             continue
         fi
 	recentModList="${jobPath}${JOB_MODLIST_SUFFIX}"
@@ -214,11 +216,12 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
             JOB_INTERVAL=$saveJI
             JOB_RETRY_INTERVAL=$saveJR
             JOB_PRIORITY=$saveJP
+            JOB_EXTRA_PARMS="" 
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
 
             if needToQueue "$jobPath" "$modName"; then
                 jobParms=`$ECHO "$modComment" | parseAssignment jobParms`
-                callEnqueue "$jobPath" "$modName" "$jobParms"
+                callEnqueue "$jobPath" "$modName" "$jobParms $JOB_EXTRA_PARMS"
             fi
         done
 
