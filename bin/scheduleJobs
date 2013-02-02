@@ -176,25 +176,25 @@ checkRunningUser
 parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 # find all the job directories with a JOB_CONTROL file
-
 $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
     jobDir=${jobControlFile%/*}
     [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
-
-    # set default job control parameters and souce the file
-    JOB_INTERVAL=1440      #set default 1 day
-    JOB_RETRY_INTERVAL=60  #set default 1 hour
-    JOB_PRIORITY=50        #set default
-    . $jobControlFile
 
     # find all the jobs in the current job directory
     $FIND -L $jobDir -perm -0100 \( -type f -or -type l \) -mindepth 1 -maxdepth 1 | while read jobPath; do
         jobFile=${jobPath##*/}
         [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
 
-        # if a custom job control file exists then source it
+        # set default job control parameters and source the jobControl file
+        JOB_INTERVAL=1440      #set default 1 day
+        JOB_RETRY_INTERVAL=60  #set default 1 hour
+        JOB_PRIORITY=50        #set default
+        . $jobControlFile
         [ -f "${jobPath}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}${JOB_CONTROL_SUFFIX}"
-
+        saveJI=$JOB_INTERVAL
+        saveJR=$JOB_RETRY_INTERVAL
+        saveJP=$JOB_PRIORITY
+        
         #----------------
         # consider the job file itself
         #----------------
@@ -210,7 +210,10 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         $CAT $recentModList 2>/dev/null | while read modName modComment; do
             [ "$VERBOSE" ] && $ECHO '        mod: ' $modName
 
-            # if a custom job control file exists then source it
+            # set default job control parameters and source the mod specific jobControl file
+            JOB_INTERVAL=$saveJI
+            JOB_RETRY_INTERVAL=$saveJR
+            JOB_PRIORITY=$saveJP
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
 
             if needToQueue "$jobPath" "$modName"; then
