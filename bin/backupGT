@@ -789,8 +789,8 @@ doModule_file () {
             $ECHO "Saved WIP log as: $newLog"
 
             # setup convenient symlinks to the newly completed backup
-            $SUDO $RM -f ${modDir}/current
-            $LN -s ${newDir} ${modDir}/current
+            $SUDO $RM -f         ${modDir}/current
+            $LN -s ${newDir##*/} ${modDir}/current
 
             # generate status file
             case ${method} in
