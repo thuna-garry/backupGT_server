@@ -232,7 +232,7 @@ targetHostStatus () {
     fi
     
     curHost=
-    $FIND $findRoot -maxdepth $findDepth -name 'status' -or -name '*_WIP.log' | sort \
+    $FIND $findRoot -maxdepth $findDepth -mindepth $findDepth -name 'status' -or -name '*_WIP.log' | sort \
     | while read f; do
         itemFound=${f##*/}
         modDir=${f%/*}
