@@ -845,7 +845,7 @@ doModule_file () {
             {
                 $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
                 elapsedStart=`$ELAPSED_CMD`
-                pruneOldBackups
+                pruneOldBackups "$modDir"
                 elapsedEnd=`$ELAPSED_CMD`
                 elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
                 $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
@@ -1043,9 +1043,7 @@ tunnel_destroy () {
 # routines for pruning backups
 ###############################################################################
 pruneOldBackups () {
-    local hostDir=${STORAGE_ROOT}/${SRC_NAME}
-    local modDir=${hostDir}/${MODULE}
-    local baseName=${modDir}/${MODULE}
+    local modDir="$1"
 
     local retainAmt
     local sedPattern
@@ -1067,7 +1065,7 @@ pruneOldBackups () {
 
     # do the prune
     local dir
-    for dir in `$LS -dr ${baseName}*_${RETENSION_TYPE} 2>/dev/null | $SED -e "$sedPattern"`; do
+    for dir in `$LS -dr ${modDir}/*_${RETENSION_TYPE} 2>/dev/null | $SED -e "$sedPattern"`; do
         $ECHO "  pruning $dir"
         $NICE $SUDO $RM -rf "$dir"
         $NICE $SUDO $RM -rf "$dir.log"
@@ -1075,7 +1073,7 @@ pruneOldBackups () {
 
     # remove any orphaned log files
     local lf
-    for lf in `$LS -f ${baseName}*_?.log 2>/dev/null`; do
+    for lf in `$LS -f ${modDir}/*_[YMWDX].log 2>/dev/null`; do
         dir=${lf%.log}
         [ -d "$dir" ] && continue
         $ECHO "  pruning orphaned log file $lf"
