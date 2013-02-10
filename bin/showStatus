@@ -232,7 +232,7 @@ targetHostStatus () {
     fi
     
     curHost=
-    $FIND $findRoot -maxdepth $findDepth -mindepth $findDepth -name 'status' -or -name '*_WIP.log' | sort \
+    $FIND $findRoot -mindepth $findDepth -maxdepth $findDepth -name 'status' -or -name '*_WIP.log' | sort \
     | while read f; do
         itemFound=${f##*/}
         modDir=${f%/*}
@@ -241,7 +241,8 @@ targetHostStatus () {
         hostName=${hostDir##*/}
 
         if [ x"$hostName" != x"$curHost" ]; then
-            $ECHO "$hostName"
+            $ECHO 
+            $ECHO "$hostName   $hostDir"
             curHost=$hostName
         fi
         if [ "$itemFound" = 'status' ]; then
