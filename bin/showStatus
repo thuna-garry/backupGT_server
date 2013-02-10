@@ -250,8 +250,13 @@ targetHostStatus () {
             statusLine=`convertOldModStatus $statusLine`
             runState=`$ECHO $statusLine | parseAssignment runState`
             runDate=` $ECHO $statusLine | parseAssignment runDate`
-            isSuspect=`isItemSuspect "$runState" "$runDate"`
-            isSuspect=`isQueued      "$hostName" "$modName" "$isSuspect"`
+            if [ -f "$hostDir/_backupGT_archive"  -o  -f "$modDir/_backupGT_archive" ]; then
+                isSuspect=`isItemSuspect "$runState" "$NOW_DATE"`
+                modName="- $modName"
+            else
+                isSuspect=`isItemSuspect "$runState" "$runDate"`
+                isSuspect=`isQueued      "$hostName" "$modName" "$isSuspect"`
+            fi
             age=`dateDiffFmt "$runDate" "$NOW_DATE"`
             
             statusLine=`$ECHO $statusLine | delAssignment runState`
