@@ -24,9 +24,13 @@
 #     crc32:     the checksum of the file contents
 #
 # The queued jobFile itself has a very simple structure as follows:
-#     jobDir:  <jobDir>
-#     jobFile: <jobFile>
-#     modName: <modName>
+#     jobPath:  <jobDir><jobFile>
+#     jobDir:   <jobDir>
+#     jobFile:  <jobFile>
+#     modName:  <modName>
+#     utcWindowStart: <utcWindowStart>
+#     utcWindowEnd:   <utcWindowEnd>
+#     jobParms: [all non-option command line parameters]
 #
 ###############################################################################
 # Modified enqueue to chack for duplicate jobs before adding a job into the
@@ -86,17 +90,20 @@ printFullUsage() {
     $ECHO "                  target."
     $ECHO "   -p <priority>  The priority as a two digit integer where 00 has the highest"
     $ECHO "                  priority and 99 the lowest.  Default = 50"
+    $ECHO "   -u <start,end> The time window in which the job should be allowed to run:"
+    $ECHO "                  'start' and 'end' are of the form HHMMSS"
     $ECHO "   -v             Print verbose output"
 }
 
 
 parseOptions() {
     local opSsupplied
-    while getopts ":j:s:p:v" arg; do
+    while getopts ":j:s:p:u:v" arg; do
         case $arg in
             j) jobPath="${OPTARG}" ;;
             s) modName="${OPTARG}";  sOptionSupplied="1" ;;
             p) priority="${OPTARG}" ;;
+            u) utcWindow="${OPTARG}" ;;
             v) VERBOSE="1" ;;
             :) printFullUsage 1>&2
                $ECHO "Option -${OPTARG} requires an argument." 1>&2
@@ -125,8 +132,11 @@ parseOptions() {
         exit 1
     fi
 
-    priority=`$ECHO $priority | grep "^[0-9][0-9]$"`
+    priority=`$ECHO $priority | $GREP "^[0-9][0-9]$"`
     priority=${priority:-50}
+
+    utcWindowStart=`$ECHO ${utcWindow:-000000,235959} | $CUT -d "," -f 1`
+    utcWindowEnd=`  $ECHO ${utcWindow:-000000,235959} | $CUT -d "," -f 2`
 
     COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
 }
@@ -145,11 +155,13 @@ $MKDIR -p $QUEUE_ROOT
 tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXX`
 #[ "$VERBOSE" ] && $ECHO "            candidate jobFile: $tmpPath"
 
-$ECHO jobPath:  $jobDir/$jobFile   >> $tmpPath
-$ECHO jobDir:   $jobDir            >> $tmpPath
-$ECHO jobFile:  $jobFile           >> $tmpPath
-$ECHO modName:  $modName           >> $tmpPath
-$ECHO jobParms: "$@"               >> $tmpPath
+$ECHO jobPath:  $jobDir/$jobFile      >> $tmpPath
+$ECHO jobDir:   $jobDir               >> $tmpPath
+$ECHO jobFile:  $jobFile              >> $tmpPath
+$ECHO modName:  $modName              >> $tmpPath
+$ECHO utcWindowStart: $utcWindowStart >> $tmpPath
+$ECHO utcWindowEnd:   $utcWindowEnd   >> $tmpPath
+$ECHO jobParms: "$@"                  >> $tmpPath
 
 # check that the candidate file is not a duplicate of an
 # already queued or running job

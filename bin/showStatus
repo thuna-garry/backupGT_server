@@ -51,6 +51,23 @@ printFullUsage() {
     $ECHO "  -u    include a summary for space utilization"
     $ECHO "  -H    scripted mode do not display any headers, footers or other decoration"
     $ECHO "If neither -j, -t, -q, or -u is specified all are assumed"
+    $ECHO 
+    $ECHO "Jobs are identified by searching the JOB_ROOT for directories which are named"
+    $ECHO "    with JOB_STATUS_DIR_SUFFIX.  As each file within the directory is a module"
+    $ECHO "    specific status file, the name of the module and the last status line from"
+    $ECHO "    the file (assumed to be the most recent status) are displayed."
+    $ECHO 
+    $ECHO "TargetHost info is identified by finding directories below the BACKUP_ROOT (three"
+    $ECHO "    levels below to be exact) which contain a MODULE_STATUS_FILE_NAME file, or"
+    $ECHO "    which contain WIP entries.  Where a MODULE_STATUS_FILE_NAME exists the last"
+    $ECHO "    line (assumed to be the most recent status) is displayed along with the module"
+    $ECHO "    name."
+    $ECHO 
+    $ECHO "    NOTE: that module's directory, or its host's (parent's) directory may"
+    $ECHO "    optionally contain a file named ARCHIVE_TAG_FILE_NAME, to indicate that the"
+    $ECHO "    backups within are no longer being updated or pruned.  Such modules will be"
+    $ECHO "    marked by a leading '-' and their currency will be ignored."
+    $ECHO 
 }
 
 
@@ -162,9 +179,9 @@ jobControlStatus () {
 
     local findName
     if [ -z "$TARGET_HOST" ]; then
-        findName='*.status'
+        findName='*'${JOB_STATUS_DIR_SUFFIX}
     else
-        findName=${TARGET_HOST}".status"
+        findName=${TARGET_HOST}${JOB_STATUS_DIR_SUFFIX}
     fi
 
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
@@ -175,7 +192,7 @@ jobControlStatus () {
 #    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "-------------------------------" "-------" "------------------" "----------"
     $FIND $JOB_ROOT -type d -name "$findName" | sort \
     | while read statusDir; do
-        jobPath=${statusDir%.status}
+        jobPath=${statusDir%${JOB_STATUS_DIR_SUFFIX}}
         jobName=${jobPath##*/}
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
         runState=`$ECHO $jobStatusLine | parseAssignment runState`
@@ -232,8 +249,12 @@ targetHostStatus () {
     fi
     
     curHost=
-    $FIND $findRoot -mindepth $findDepth -maxdepth $findDepth -name 'status' -or -name '*_WIP.log' | sort \
-    | while read f; do
+    $FIND $findRoot -mindepth $findDepth \
+                    -maxdepth $findDepth \
+                    -name "$MODULE_STATUS_FILE_NAME" \
+                    -or \
+                    -name '*_WIP.log' \
+    | sort | while read f; do
         itemFound=${f##*/}
         modDir=${f%/*}
         modName=${modDir##*/}
@@ -245,12 +266,12 @@ targetHostStatus () {
             $ECHO "$hostName   $hostDir"
             curHost=$hostName
         fi
-        if [ "$itemFound" = 'status' ]; then
+        if [ "$itemFound" = "$MODULE_STATUS_FILE_NAME" ]; then
             statusLine=`$TAIL -1 $f`
             statusLine=`convertOldModStatus $statusLine`
             runState=`$ECHO $statusLine | parseAssignment runState`
             runDate=` $ECHO $statusLine | parseAssignment runDate`
-            if [ -f "$hostDir/_backupGT_archive"  -o  -f "$modDir/_backupGT_archive" ]; then
+            if [ -f "$hostDir/$ARCHIVE_TAG_FILE_NAME"  -o  -f "$modDir/$ARCHIVE_TAG_FILE_NAME" ]; then
                 isSuspect=`isItemSuspect "$runState" "$NOW_DATE"`
                 modName="- $modName"
             else

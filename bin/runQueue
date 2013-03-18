@@ -23,7 +23,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012.10.21'
+LAST_MODIFIED_DATE='2013.03.16'
 
 
 ###############################################################################
@@ -182,10 +182,10 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 # get the head of the queue
 #     We don't just want to grab the obvious first entry from the queue but the first
 #     entry that is not for the same jobFile as an already running job.  This is because
-#     any one jobFile will be pull data from a particular host, and want to minimize
-#     having multiple concurrent jobs all trying to pull from the same server.  So (except
-#     where there are multiple jobFiles which pull from the same host) we can prevent this
-#     buy having each concurrent queueRunner based on a different jobFile.
+#     any one jobFile will be pulling data from a particular host, and we want to minimize
+#     having multiple concurrent jobs all trying to pull from the same target.  So (except
+#     where there are multiple jobFiles which pull from the same target) we can prevent
+#     this by having each concurrent queueRunner based on a different jobFile.
 #----------------
 exclusionListPath=/tmp/${0##*/}.$$
 awk '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $queueDir/mx_* > $exclusionListPath 2>/dev/null
@@ -218,71 +218,91 @@ fi
 
 
 #----------------
-# now we have a queue entry so run it
+# now we have a queue lets consider running it
 #----------------
-jobDir=`  $SED -n -e '/^jobDir:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-jobFile=` $SED -n -e '/^jobFile:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-modName=` $SED -n -e '/^modName:/!d;  s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-jobParms=`$SED -n -e '/^jobParms:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+jobDir=`        $SED -n -e '/^jobDir:/!d;         s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+jobFile=`       $SED -n -e '/^jobFile:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+modName=`       $SED -n -e '/^modName:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+utcWindowStart=`$SED -n -e '/^utcWindowStart:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+utcWindowEnd=`  $SED -n -e '/^utcWindowEnd:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+jobParms=`      $SED -n -e '/^jobParms:/!d;       s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 
 logDir="$LOG_ROOT/$jobFile"
 logPath="${logDir}/${modName:-$JOB_MODLIST_STATUS}.jobLog"
 mkdir -p "$logDir"
 
-{
-    if [ -z "$modName" ]; then
-        [ -f ${jobDir}/$JOB_CONTROL ]                    && . ${jobDir}/$JOB_CONTROL
-        [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
-    
-        modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
-        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
-            ${jobDir}/${jobFile} -j ${modListPath} $jobParms
-        ${jobDir}/${jobFile} -j ${modListPath} $jobParms
-        rc=$?
-    
-        if [ $rc -eq 0 -a -f "${modListPath}" ]; then
-            #sucessful so save jobParms in modList
-            parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
-            $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
-        fi
-    
-    else
-        [ -f ${jobDir}/$JOB_CONTROL ]                               && . ${jobDir}/$JOB_CONTROL
-        [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
-        [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
-    
-        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
-            ${jobDir}/${jobFile} -s "$modName" $jobParms
-        ${jobDir}/${jobFile} -s "$modName" $jobParms
-        rc=$?
-    fi
-    [ "$VERBOSE" ] && $PRINTF '%s\n' "queueRunner_$qrNum (pid=$$) job return code=$rc"
-} >> ${logPath} 2>&1
 
-
-
-#----------------
-# append a status entry to the status file
-#----------------
-statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
-statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}" 
-statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
-lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
-lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
-statLine=`$ECHO "" | makeAssignment runDate $timeStamp`
-if [ "$rc" -eq 0 ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) success - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment runState SUCCESS`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $timeStamp`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $lastFailureDate`
+nowTime=`$DATE -u +${TIME_FORMAT}`
+utcWindowOkay=1
+if [ "$utcWindowStart" -lt "$utcWindowEnd" ]; then
+    [ "$nowTime" -lt "$utcWindowStart" ] && utcWindowOkay=0
+    [ "$nowTime" -gt "$utcWindowEnd" ]   && utcWindowOkay=0
 else
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) failure - updating status"
-    statLine=`$ECHO "$statLine" | makeAssignment runState FAILURE`
-    statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $lastSuccessDate`
-    statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $timeStamp`
+    [ "$nowTime" -lt "$utcWindowStart" ] && \
+    [ "$nowTime" -ge "$utcWindowEnd" ]   && utcWindowOkay=0
 fi
-$MKDIR -p $statusDir    #ensure that the job status dir exists
-$ECHO "$statLine" >> $statusPath
+
+if [ "$utcWindowOkay" -eq 0 ]; then
+    {
+         $ECHO ${timeStamp}: ${jobDir}/${jobFile} -s "$modName" cancelled. \
+             Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}"
+    } >> ${logPath} 2>&1
+
+else #run it
+    {
+        if [ -z "$modName" ]; then
+            [ -f ${jobDir}/$JOB_CONTROL ]                    && . ${jobDir}/$JOB_CONTROL
+            [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
+        
+            modListPath=${jobDir}/${jobFile}${JOB_MODLIST_SUFFIX}
+            [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
+                ${jobDir}/${jobFile} -j ${modListPath} $jobParms
+            ${jobDir}/${jobFile} -j ${modListPath} $jobParms
+            rc=$?
+        
+            if [ $rc -eq 0 -a -f "${modListPath}" ]; then
+                #sucessful so save jobParms in modList
+                parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
+                $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
+            fi
+        
+        else
+            [ -f ${jobDir}/$JOB_CONTROL ]                               && . ${jobDir}/$JOB_CONTROL
+            [ -f ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX} ]            && . ${jobDir}/${jobFile}${JOB_CONTROL_SUFFIX}
+            [ -f ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} ] && . ${jobDir}/${jobFile}.${modName}${JOB_CONTROL_SUFFIX} 
+        
+            [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$)" \
+                ${jobDir}/${jobFile} -s "$modName" $jobParms
+            ${jobDir}/${jobFile} -s "$modName" $jobParms
+            rc=$?
+        fi
+        [ "$VERBOSE" ] && $PRINTF '%s\n' "queueRunner_$qrNum (pid=$$) job return code=$rc"
+    } >> ${logPath} 2>&1
+    
+
+    #----------------
+    # append a status entry to the status file
+    #----------------
+    statusDir="${jobDir}/${jobFile}${JOB_STATUS_DIR_SUFFIX}"
+    statusPath="${statusDir}/${modName:-$JOB_MODLIST_STATUS}" 
+    statLine=`$SORT $statusPath 2>/dev/null | $TAIL -1`
+    lastSuccessDate=`$ECHO "$statLine" | parseAssignment lastSuccessDate`
+    lastFailureDate=`$ECHO "$statLine" | parseAssignment lastFailureDate`
+    statLine=`$ECHO "" | makeAssignment runDate $timeStamp`
+    if [ "$rc" -eq 0 ]; then
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) success - updating status"
+        statLine=`$ECHO "$statLine" | makeAssignment runState SUCCESS`
+        statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $timeStamp`
+        statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $lastFailureDate`
+    else
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) failure - updating status"
+        statLine=`$ECHO "$statLine" | makeAssignment runState FAILURE`
+        statLine=`$ECHO "$statLine" | makeAssignment lastSuccessDate      $lastSuccessDate`
+        statLine=`$ECHO "$statLine" | makeAssignment lastFailureDate      $timeStamp`
+    fi
+    $MKDIR -p $statusDir    #ensure that the job status dir exists
+    $ECHO "$statLine" >> $statusPath
+fi
 
 
 #----------------

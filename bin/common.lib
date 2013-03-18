@@ -2,6 +2,13 @@
 # shared application globals
 ################################################################################
 
+#-------------------------------------------------------
+# the name of a file which will be appened with a single
+# line status/summary each time a module is backed up
+#-------------------------------------------------------
+MODULE_STATUS_FILE_NAME="status"
+
+
 JOB_STATUS_DIR_SUFFIX=".status"
 #-------------------------------------------------------
 # variables used in job control status files are:
@@ -14,6 +21,15 @@ JOB_STATUS_DIR_SUFFIX=".status"
 #-------------------------------------------------------
 JOB_MODLIST_SUFFIX=".modList"
 JOB_MODLIST_STATUS="%modList"
+
+
+#-------------------------------------------------------
+# The name of a file which if present in a host's or module's
+# backup storage directory indicates that the backups within
+# are archives which are no longer to be pruned or examined
+# for their currency
+#-------------------------------------------------------
+ARCHIVE_TAG_FILE_NAME="_backupGT_archive"
 
 
 #-------------------------------------------------------
@@ -34,6 +50,7 @@ ZFS_UPROP_METHOD="backupgt:method"         # method by which data was received
 # date and timestamp manipulations
 ################################################################################
 DATE_FORMAT="%Y.%m.%d-%H%M%S"
+TIME_FORMAT="%H%M%S"
 
 timeStamp2Date() {
     local ts=${1%z}

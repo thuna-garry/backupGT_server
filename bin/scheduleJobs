@@ -155,13 +155,16 @@ needToQueue () {
 callEnqueue () {
     local jobPath="$1"
     local modName="$2"
+    local utcWindowStart="${3:-000000}"
+    local utcWindowEnd="${4:-235959}"
     shift 2
 
-    ${BACKUPGT_ROOT}/bin/enqueue       \
-        `[ "$VERBOSE" ] && $ECHO "-v"` \
-        "-j" "$jobPath"                \
-        "-s" "$modName"                \
-        "-p" "$JOB_PRIORITY"           \
+    ${BACKUPGT_ROOT}/bin/enqueue                  \
+        `[ "$VERBOSE" ] && $ECHO "-v"`            \
+        "-j" "$jobPath"                           \
+        "-s" "$modName"                           \
+        "-p" "$JOB_PRIORITY"                      \
+        "-u" "${utcWindowStart},${utcWindowEnd}"  \
         "--" $*
     if [ $? -eq 100 ]; then
         [ "$VERBOSE" ] && $ECHO '          . attempted enqueue but job already queued'
@@ -178,7 +181,7 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 # find all the job directories with a JOB_CONTROL file
 $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
     jobDir=${jobControlFile%/*}
-    [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/}  ($jobDir)"
+    [ "$VERBOSE" ] && $ECHO "job dir: ${jobDir##*/} ($jobDir)"
 
     # find all the jobs in the current job directory
     $FIND -L $jobDir -perm -0100 \( -type f -or -type l \) -mindepth 1 -maxdepth 1 | while read jobPath; do
@@ -198,10 +201,12 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         saveJX="$JOB_EXTRA_PARMS"
         
         #----------------
-        # consider the job file itself
+        # consider the job file itself (without a module being specified)
         #----------------
         if needToQueue "$jobPath" "$JOB_MODLIST_STATUS"; then
-            callEnqueue "$jobPath" "" "${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS" 
+            callEnqueue "$jobPath" "" \
+                        "" "" \
+                        "${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS" 
             continue
         fi
 	recentModList="${jobPath}${JOB_MODLIST_SUFFIX}"
@@ -220,8 +225,12 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
 
             if needToQueue "$jobPath" "$modName"; then
+                utcWindowStart=`$ECHO "$modComment" | parseAssignment utcWindowStart`
+                utcWindowEnd=`  $ECHO "$modComment" | parseAssignment utcWindowEnd`
                 jobParms=`$ECHO "$modComment" | parseAssignment jobParms`
-                callEnqueue "$jobPath" "$modName" "$jobParms $JOB_EXTRA_PARMS"
+                callEnqueue "$jobPath" "$modName" \
+                            "$utcWindowStart" "$utcWindowEnd" \
+                            "$jobParms $JOB_EXTRA_PARMS"
             fi
         done
 
