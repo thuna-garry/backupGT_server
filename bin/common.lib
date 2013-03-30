@@ -65,8 +65,8 @@ date2timeStamp() {
     local date=${1%z}
     case $SYSTEM_TYPE in
         linux)
-             dayPart=` $ECHO $date | $SED 's/^\([0-9][0-9][0-9][0-9]\).\([0-9][0-9]\).\([0-9][0-9]\).*/\1\2\3/'`
-             timePart=`$ECHO $date | $SED 's/.*\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)$/\1 \2 \3/'`
+             dayPart=` $ECHO $date     | $SED 's/^\([0-9][0-9][0-9][0-9]\).\([0-9][0-9]\).\([0-9][0-9]\).*/\1\2\3/'`
+             timePart=`$ECHO ${date}00 | $SED 's/.*-\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\).*/\1 \2 \3/'`
              h=${timePart%% *}
              m=${timePart#* }; m=${m% *}
              s=${timePart##* }

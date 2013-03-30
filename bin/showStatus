@@ -241,19 +241,13 @@ targetHostStatus () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     if [ -z "$TARGET_HOST" ]; then
-        findRoot=$STORAGE_ROOT
-        findDepth=3
+        findPat=$STORAGE_ROOT/\*/\*
     else
-        findRoot=$STORAGE_ROOT/$TARGET_HOST
-        findDepth=2
+        findPat=$STORAGE_ROOT/$TARGET_HOST/\*
     fi
     
     curHost=
-    $FIND $findRoot -mindepth $findDepth \
-                    -maxdepth $findDepth \
-                    -name "$MODULE_STATUS_FILE_NAME" \
-                    -or \
-                    -name '*_WIP.log' \
+    ls $findPat/$MODULE_STATUS_FILE_NAME $findPat/*_WIP.log 2>/dev/null \
     | sort | while read f; do
         itemFound=${f##*/}
         modDir=${f%/*}
