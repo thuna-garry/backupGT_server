@@ -69,7 +69,8 @@ parseOptions() {
     while getopts ":vD" arg; do
         case $arg in
             D) DEBUG=$(( DEBUG + 1 )) 
-               ;&
+               VERBOSE="1"
+               ;;
             v) VERBOSE="1"
                ;;
             :) printFullUsage 1>&2
@@ -138,7 +139,7 @@ fi
 # create a mutex in the queue (mark with a timestamp)
 #----------------
 timeStamp=`$DATE -u +${DATE_FORMAT}z`
-thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXX`
+thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXXX`
 $ECHO "$$" > $thisMutex
 $SLEEP 1
 
@@ -188,11 +189,14 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 #     this by having each concurrent queueRunner based on a different jobFile.
 #----------------
 exclusionListPath=/tmp/${0##*/}.$$
-awk '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $queueDir/mx_* > $exclusionListPath 2>/dev/null
+$ECHO 'h' > $exclusionListPath
+$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $queueDir/mx_* 2>/dev/null \
+    | $AWK '{ print "s:"$0":d" }'                                                     \
+    >> $exclusionListPath
 firstQueuedJobPath=$(
-    awk '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $queueDir/qj_*  \
-        | grep -v -f $exclusionListPath                                                    \
-        | awk 'NR == 1 {print $1}'                                                         \
+    $AWK '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $queueDir/qj_* 2>/dev/null \
+        | $SED -f $exclusionListPath                                                                   \
+        | $AWK 'NR == 1 {print $1}'                                                                    \
     )
 rm -f $exclusionListPath
 
@@ -230,7 +234,6 @@ jobParms=`      $SED -n -e '/^jobParms:/!d;       s/^[^[:blank:]]*[[:blank:]]*//
 logDir="$LOG_ROOT/$jobFile"
 logPath="${logDir}/${modName:-$JOB_MODLIST_STATUS}.jobLog"
 mkdir -p "$logDir"
-
 
 nowTime=`$DATE -u +${TIME_FORMAT}`
 utcWindowOkay=1

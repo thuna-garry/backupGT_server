@@ -433,9 +433,12 @@ getModuleList () {
     local rc
     case "$TRANSPORT" in
         tunnel)
-            tunnel_create
             #todo: test if this works 
-            ;&
+            tunnel_create
+            [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
+                                  $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
+            rc=$?
+            ;;
         rsync)
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
                                   $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
@@ -464,7 +467,7 @@ doList () {
     $ECHO "    retrieving module list"
 
     # create a temporary file in which to stash the list
-    local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXX`
+    local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXXX`
     getModuleList > $modListPath
     rc=$?
     if [ $rc -ne 0 ]; then
@@ -543,15 +546,11 @@ doModule () {
     local method=`$ECHO $modComment | parseAssignment method`
     local rc
     case "$method" in 
-        rsync)
-            ;&
-        tar)
+        rsync|tar)
             doModule_file "$@"
             rc=$?
             ;;
-        zfs)
-            ;&
-        zfs.rsync)
+        zfs|zfs.rsync)
             doModule_zfs "$@"
             rc=$?
             ;;
@@ -998,7 +997,12 @@ doModule_zfs2 () {
             rc=$?
             elapsedEnd=`$ELAPSED_CMD`
             elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
-            ;&
+            
+            $ECHO "=============================================================================="
+            $ECHO "= import of snapshot for module $MODULE completed successfully at `$DATE_CMD`"
+            $ECHO "     duration = $elapsedMin minutes"
+            $ECHO "=============================================================================="
+            ;;
 
          zfs.* )
             $ECHO "=============================================================================="

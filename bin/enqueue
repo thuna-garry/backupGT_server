@@ -152,7 +152,7 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 $MKDIR -p $QUEUE_ROOT
 
 # create a candidate queue file and populate
-tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXX`
+tmpPath=`$MKTEMP ${QUEUE_ROOT}/tmp_XXXXXX`
 #[ "$VERBOSE" ] && $ECHO "            candidate jobFile: $tmpPath"
 
 $ECHO jobPath:  $jobDir/$jobFile      >> $tmpPath
