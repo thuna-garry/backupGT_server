@@ -126,11 +126,12 @@ convertOldModStatus () {
     # convert the status line from old format
     if $ECHO "$statLine" | $GREP -q '^[2]'; then
         statLine="runDate=$statLine"
-        statLine=${statLine/[files: /files=}
-        statLine=${statLine/[MBytes: /MBytes=}
-        statLine=${statLine/[listGen: /listGen=}
-        statLine=${statLine/[totTime: /totTime=}
-        statLine=${statLine/[rc: /rc=}
+        statLine=${statLine/files: /files=}
+        statLine=${statLine/MBytes: /MBytes=}
+        statLine=${statLine/listGen: /listGen=}
+        statLine=${statLine/totTime: /totTime=}
+        statLine=${statLine/rc: /rc=}
+        statLine=${statLine/[/}
         statLine=${statLine/]/}
         if $ECHO "$statLine" | $GREP -q 'rc=0'; then
             statLine=`$ECHO $statLine | makeAssignment runState SUCCESS`
