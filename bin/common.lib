@@ -210,7 +210,7 @@ checkRunningUser () {
 
 getCanonicalDir () {
     local dir="$1"
-    pushd dir      > /dev/null 2>&1
+    pushd $dir     > /dev/null 2>&1
     echo "$PWD"
     popd           > /dev/null 2>&1
 }
