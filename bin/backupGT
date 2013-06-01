@@ -433,7 +433,6 @@ getModuleList () {
     local rc
     case "$TRANSPORT" in
         tunnel)
-            #todo: test if this works 
             tunnel_create
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
                                   $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
