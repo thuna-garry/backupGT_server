@@ -437,6 +437,7 @@ getModuleList () {
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
                                   $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
             rc=$?
+            tunnel_destroy
             ;;
         rsync)
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
@@ -467,7 +468,7 @@ doList () {
 
     # create a temporary file in which to stash the list
     local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXXX`
-    getModuleList > $modListPath
+    echo "`getModuleList`" > $modListPath
     rc=$?
     if [ $rc -ne 0 ]; then
         $ECHO "    error encountered aborting."
@@ -496,12 +497,13 @@ doList () {
     else
         $ECHO "    available modules are"
         $CAT "$modListPath" | while read mod; do
-            $ECHO "    $mod"
+            $ECHO "        $mod"
         done 
     fi
     $ECHO
 
     # process each module
+    [ "$TRANSPORT" = "tunnel" ] && tunnel_create
     local modName
     local modComment
     local auto
@@ -533,6 +535,7 @@ doList () {
     done <<< "`$CAT $modListPath`"
     $ECHO
     $RM -f "$modListPath"
+    [ "$TRANSPORT" = "tunnel" ] && tunnel_destroy
     return $rc
 }
 
@@ -592,8 +595,8 @@ doModule_file () {
         newDir=${modDir}/${origName}
     fi
     local newLog=${newDir}.log
-    [ "$DEBUG" ] && $PRINTF 'debug: newDir = "%s"\n' $newDir  1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: newLog = "%s"\n' $newLog  1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: newDir   = "%s"\n' $newDir  1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: newLog   = "%s"\n' $newLog  1>&2
 
     local workDir=${baseName}_WIP
     local workLog=${workDir}.log
@@ -650,7 +653,7 @@ doModule_file () {
         seedDir=${baseName}_00000000
         $MKDIR -p ${seedDir}
     fi
-    [ "$DEBUG" ] && $PRINTF 'debug: seedDir = "%s"\n' $seedDir  1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: seedDir  = "%s"\n' $seedDir  1>&2
 
     { $ECHO "=============================================================================="
       $ECHO "= Backup started for $SRC_NAME/$MODULE at $timeStamp"
@@ -1025,19 +1028,21 @@ doModule_zfs2 () {
 ###############################################################################
 tunnel_create () {
     trap tunnel_destroy 0 1 2 3 4 15
-    $ECHO "creating tunnel..." 1>&2
-    $ECHO ssh $SSH_OPTS 
-    $SSH $SSH_OPTS &
+    $ECHO -n "    creating tunnel... " 1>&2
+    [ "$DEBUG" ] && $ECHO -ne "\n        " 1>&2
+    [ "$DEBUG" ] && $ECHO $SSH $SSH_OPTS 1>&2
+                          $SSH $SSH_OPTS &
     tunnelPid=$!
     $SLEEP 5
-    $ECHO " done" 1>&2
+    $ECHO "    done" 1>&2
 }
 
 tunnel_destroy () {
-    if [ ! "$tunnelPid" ]; then
-        $ECHO -n "destroying tunnel..." 1>&2
-        $KILL $tunnelPid
-        $ECHO " done" 1>&2
+    trap - 0 1 2 3 4 15
+    if [ -n "$tunnelPid" ]; then
+        $ECHO -n "    destroying tunnel... " 1>&2
+        $KILL $tunnelPid 
+        $ECHO "    done" 1>&2
     fi
 }
 
