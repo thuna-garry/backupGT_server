@@ -739,27 +739,27 @@ doModule_file () {
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
-		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} 
+		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"
 		    dummyCommand_to_inform_ssh_that_there_is_no_tty
 		    | $TAR xvf - -C ${workDir} 
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
-		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}
+		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"
 		    dummyCommand_to_inform_ssh_that_there_is_no_tty
 		    | $TAR xvf - -C ${workDir} 
 		__CMD__
 
             if [ "$VERBOSE" ]; then
-                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}      \
-                    dummyCommand_to_inform_ssh_that_there_is_no_tty                                        \
-                    | $TAR xvf - -C ${workDir}                                                             \
+                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"  \
+                    dummyCommand_to_inform_ssh_that_there_is_no_tty                                             \
+                    | $TAR xvf - -C ${workDir}                                                                  \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[1]}
             else
-                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}      \
-                    dummyCommand_to_inform_ssh_that_there_is_no_tty                                        \
-                    | $TAR xvf - -C ${workDir}                                                             \
+                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"  \
+                    dummyCommand_to_inform_ssh_that_there_is_no_tty                                             \
+                    | $TAR xvf - -C ${workDir}                                                                  \
                     >> $workLog 2>&1
                 rcDetail=$?
             fi 
