@@ -191,7 +191,7 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 exclusionListPath=/tmp/${0##*/}.$$
 $ECHO 'h' > $exclusionListPath
 $AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $queueDir/mx_* 2>/dev/null \
-    | $AWK '{  gsub(/\//, "\\/"); print "/"$0"/d" }'                                                     \
+    | $AWK '{  gsub(/\//, "\\/"); print "/"$0"/d" }'                                  \
     >> $exclusionListPath
 firstQueuedJobPath=$(
     $AWK '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $queueDir/qj_* 2>/dev/null \
