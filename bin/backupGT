@@ -243,7 +243,7 @@ printFullUsage() {
     $ECHO "              yearly,monthly,weekly, and daily backups will not be pruned and"
     $ECHO "              delete extra backups older than the most recent 30 extra backups"
     $ECHO "   -j   Only retrieve the module list and echo it modListPath. If modListPath is not supplied"
-    $ECH0 "        then the retrieved list is output to stdout.  This is used when this script"
+    $ECHO "        then the retrieved list is output to stdout.  This is used when this script"
     $ECHO "        is being invoked by the backupGT job control system. The output module list will be"
     $ECHO "        subsequently be used by the job control system to retry the backup of each module"
     $ECHO "        at regular intervals until it succeeds."
