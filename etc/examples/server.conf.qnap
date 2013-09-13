@@ -1,0 +1,206 @@
+#! /bin/sh
+
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/bin:/opt/sbin
+
+###############################################################################
+# user defined globals
+#
+#  all item named *_ROOT should have paths specified in canonical form
+###############################################################################
+BACKUPGT_ROOT=/share/MD0_DATA/custom/backupGT_server
+
+
+#----
+# The type of server that we are running on
+# must be either 'bsd' or 'linux'
+#----
+SYSTEM_TYPE=linux 
+
+
+#----
+# The root directory under which all backups will be stored.
+#----
+STORAGE_ROOT=/share/backupGT
+
+
+#----
+# When we are on a BSD (style) server we have the option for a) storing the
+# backups on ZFS and b) backing up targets by using ZFS send/receive.  These
+# parameters provide backupGT the information to (optionally) isolate backups
+# into separate ZFS datasets and use the zfs.rsync backup method (if TMP_* is
+# specifed)
+#----
+STORAGE_DS=data/backupGT       #the root dataset (required)
+CREATE_MOD_DIR_AS_ZFS_DS=yes   #is each module to be isolated into a separate dataset
+
+TMP_DS=data/_tmp               #only used if any target specifies the zfs.rsync method
+TMP_DS_MAX_SIZE=2000G          #if set then a space limit will be set on the dataset
+
+
+#----
+# What user to assume when running priviledged commands
+#   if we don't want/need to use sudo for priveledge escalation then define
+#   but leave blank
+#----
+SUDO_USER=""
+
+
+#----
+# default retension parameters (see `backupGT -h` for more information)
+#----
+RETENSION="10,11,10,12,0"
+
+
+#----
+# the default key file suffix for targets with reduced sshd functionality
+#----
+KEYFILE_SUFFIX='\.key'   #escape any special characters
+
+
+#----
+# This is the directory under which job queues will be stored.  The queue is
+# automatically created and managed by the "enqueue" and "runQueue" scripts.
+# The number of queue runners directly translates into how many concurrent jobs
+# should be run from this server and should consider network bandwidth, local
+# disk performance, and local processing capacity.  Queue entries may have
+# priorities specfied by an arbitrary integer where the highest priority is
+# 0 followed by 1, etc. Queue entries with the same priority will be serviced
+# on a FIFO basis.
+#----
+QUEUE_ROOT=$BACKUPGT_ROOT/queue
+QUEUE_RUNNERS=2
+
+
+#----
+# This is the directory (tree) under which all job files should be stored.
+# Generally a subdirectory will be used for jobs with common control
+# characteristics.  Executable job files within (sub)directories marked by the
+# presence of a JOB_CONTROL file will be managed by the backupGT job control
+# sysgtem. All other jobs within JOB_ROOT (or subdirectories thereof) will not
+# be managed and must be run directly.
+#----
+JOB_ROOT=$BACKUPGT_ROOT/jobs
+
+#----
+# The name of the job control file and the suffix for job specific job
+# control files.  The presense of a file named $JOB_CONTROL in a
+# (sub)directory of JOB_ROOT marks the jobs within that (sub)directory for 
+# management by the backupGT job control system.  Individual jobs may
+# override the directory job control with custom job control by having a
+# job control file named the <jobFileName>$JOB_CONTROL_SUFFIX
+#----
+JOB_CONTROL='_jobControl'
+JOB_CONTROL_SUFFIX='.jobControl'
+
+
+#----
+# This is the directory where log files will be placed when the module being
+# backed up is using a zfs method.  As all zfs methods replicate the 
+# source exactly the log files cannot be placed with the backup copy on the
+# server.  So we need to have another area in which to place them.
+#----
+LOG_ROOT=$BACKUPGT_ROOT/log
+
+
+###############################################################################
+# define utility programs
+###############################################################################
+AWK=`which awk`
+BASENAME=`which basename`
+CAT=`which cat`
+CHMOD=`which chmod`
+CHOWN=`which chown`
+CKSUM=`which cksum`
+CUT=`which cut`
+DATE=`which date`
+DIRNAME=`which dirname`
+DU=`which du`
+ECHO=`which echo`
+ENV_CMD=`which env`
+EXPR=`which expr`
+FIND=`which find`
+GREP=`which grep`
+HEAD=`which head`
+HOSTNAME=`which hostname`
+ID=`which id`
+KILL=`which kill`
+LN=`which ln`
+LS=`which ls`
+MKDIR=`which mkdir`
+MKTEMP=`which mktemp`
+MV=`which mv`
+NICE=`which nice`
+PRINTF=`which printf`
+PS=`which ps`
+READLINK=`which readlink`
+RM=`which rm`
+RSYNC=`which rsync`
+SED=`which sed`
+SEQ=`which seq`
+SLEEP=`which sleep`
+SORT=`which sort`
+SSH=`which ssh`
+STAT=`which stat`
+SUDO=`which sudo`
+TAIL=`which tail`
+TAR=`which tar`
+TEE=`which tee`
+UNIQ=`which uniq`
+WC=`which wc`
+ZFS=`which zfs`
+
+[ $SYSTEM_TYPE = "bsd" ] && ZFS=`which zfs`
+[ $SYSTEM_TYPE = "bsd" ] && ZPOOL=`which zpool`
+
+
+###############################################################################
+# ensure that all programs exist
+###############################################################################
+[ ! "$AWK" ]      && echo AWK       variable not defined or command not found 1>&2 && exit 1
+[ ! "$BASENAME" ] && echo BASENAME  variable not defined or command not found 1>&2 && exit 1
+[ ! "$CAT" ]      && echo CAT       variable not defined or command not found 1>&2 && exit 1
+[ ! "$CHMOD" ]    && echo CHMOD     variable not defined or command not found 1>&2 && exit 1
+[ ! "$CHOWN" ]    && echo CHOWN     variable not defined or command not found 1>&2 && exit 1
+[ ! "$CKSUM" ]    && echo CKSUM     variable not defined or command not found 1>&2 && exit 1
+[ ! "$CUT" ]      && echo CUT       variable not defined or command not found 1>&2 && exit 1
+[ ! "$DATE" ]     && echo DATE      variable not defined or command not found 1>&2 && exit 1
+[ ! "$DIRNAME" ]  && echo DIRNAME   variable not defined or command not found 1>&2 && exit 1
+[ ! "$DU" ]       && echo DU        variable not defined or command not found 1>&2 && exit 1
+[ ! "$ECHO" ]     && echo ECHO      variable not defined or command not found 1>&2 && exit 1
+[ ! "$ENV_CMD" ]  && echo ENV       variable not defined or command not found 1>&2 && exit 1
+[ ! "$EXPR" ]     && echo EXPR      variable not defined or command not found 1>&2 && exit 1
+[ ! "$FIND" ]     && echo FIND      variable not defined or command not found 1>&2 && exit 1
+[ ! "$GREP" ]     && echo GREP      variable not defined or command not found 1>&2 && exit 1
+[ ! "$HEAD" ]     && echo HEAD      variable not defined or command not found 1>&2 && exit 1
+[ ! "$HOSTNAME" ] && echo HOSTNAME  variable not defined or command not found 1>&2 && exit 1
+[ ! "$ID" ]       && echo ID        variable not defined or command not found 1>&2 && exit 1
+[ ! "$KILL" ]     && echo KILL      variable not defined or command not found 1>&2 && exit 1
+[ ! "$LN" ]       && echo LN        variable not defined or command not found 1>&2 && exit 1
+[ ! "$LS" ]       && echo LS        variable not defined or command not found 1>&2 && exit 1
+[ ! "$MKDIR" ]    && echo MKDIR     variable not defined or command not found 1>&2 && exit 1
+[ ! "$MKTEMP" ]   && echo MKTEMP    variable not defined or command not found 1>&2 && exit 1
+[ ! "$MV" ]       && echo MV        variable not defined or command not found 1>&2 && exit 1
+[ ! "$NICE" ]     && echo NICE      variable not defined or command not found 1>&2 && exit 1
+[ ! "$PRINTF" ]   && echo PRINTF    variable not defined or command not found 1>&2 && exit 1
+[ ! "$PS" ]       && echo PS        variable not defined or command not found 1>&2 && exit 1
+[ ! "$READLINK" ] && echo READLINK  variable not defined or command not found 1>&2 && exit 1
+[ ! "$RM" ]       && echo RM        variable not defined or command not found 1>&2 && exit 1
+[ ! "$RSYNC" ]    && echo RSYNC     variable not defined or command not found 1>&2 && exit 1
+[ ! "$SED" ]      && echo SED       variable not defined or command not found 1>&2 && exit 1
+[ ! "$SEQ" ]      && echo SEQ       variable not defined or command not found 1>&2 && exit 1
+[ ! "$SLEEP" ]    && echo SLEEP     variable not defined or command not found 1>&2 && exit 1
+[ ! "$SORT" ]     && echo SORT      variable not defined or command not found 1>&2 && exit 1
+[ ! "$SSH" ]      && echo SSH       variable not defined or command not found 1>&2 && exit 1
+[ ! "$STAT" ]     && echo STAT      variable not defined or command not found 1>&2 && exit 1
+[ ! "$SUDO" ]     && echo SUDO      variable not defined or command not found 1>&2 && exit 1
+[ ! "$TAIL" ]     && echo TAIL      variable not defined or command not found 1>&2 && exit 1
+[ ! "$TAR" ]      && echo TAR       variable not defined or command not found 1>&2 && exit 1
+[ ! "$TEE" ]      && echo TEE       variable not defined or command not found 1>&2 && exit 1
+[ ! "$UNIQ" ]     && echo UNIQ      variable not defined or command not found 1>&2 && exit 1
+[ ! "$WC" ]       && echo WC        variable not defined or command not found 1>&2 && exit 1
+
+[ $SYSTEM_TYPE = "bsd" ] && [ ! "$ZFS" ]  \
+                  && echo ZFS       variable not defined or command not found 1>&2 && exit 1
+[ $SYSTEM_TYPE = "bsd" ] && [ ! "$ZPOOL" ]  \
+                  && echo ZPOOL     variable not defined or command not found 1>&2 && exit 1
+
