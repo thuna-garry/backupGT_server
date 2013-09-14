@@ -85,7 +85,7 @@ printFullUsage() {
     $ECHO "                  relative to JOB_ROOT ('$JOB_ROOT/'"
     $ECHO "                  will be prepended)"
     $ECHO "   -s <modName>   The module name to run the job for.  Athough this parameter"
-    $ECHO "                  must be supplied it can be an emply string to indicated that"
+    $ECHO "                  must be supplied it can be an emply string to indicate that"
     $ECHO "                  the job will be run to retrieve the module list from the"
     $ECHO "                  target."
     $ECHO "   -p <priority>  The priority as a two digit integer where 00 has the highest"

@@ -22,7 +22,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2013.01.06'
+LAST_MODIFIED_DATE='2013.09.14'
 
 
 ###############################################################################
@@ -36,7 +36,7 @@ printMiniUsage() {
 
 printFullUsage() {
     $ECHO "###############################################################################"
-    $ECHO "# clearJobStatus (part of the backupGT suite)"
+    $ECHO "# setJobStatus (part of the backupGT suite)"
     $ECHO "# Author: Garry Thuna"
     $ECHO "# Created: 2013.01.06"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"

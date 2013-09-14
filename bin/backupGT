@@ -468,7 +468,7 @@ doList () {
 
     # create a temporary file in which to stash the list
     local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXXX`
-    echo "`getModuleList`" > $modListPath
+    getModuleList > $modListPath
     rc=$?
     if [ $rc -ne 0 ]; then
         $ECHO "    error encountered aborting."

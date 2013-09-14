@@ -35,7 +35,7 @@ fi
 if [ -z "$1" -a -z "$2" ]; then
     list=""
 else 
-    list=`seq $start $(( start + count -1 ))`
+    list=`seq -f %02.0f $start $(( start + count -1 ))`
 fi
 for i in "" $list; do
     if [ -n "$i" ]; then
