@@ -20,7 +20,7 @@ SYSTEM_TYPE=linux
 #----
 # The root directory under which all backups will be stored.
 #----
-STORAGE_ROOT=/share/backupGT
+STORAGE_ROOT=/share/MD0_DATA/backupGT
 
 
 #----
