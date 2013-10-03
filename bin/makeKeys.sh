@@ -24,7 +24,7 @@ start=${2:-1}    #counting from (the first key number to make)
 if [ -z "$1" -a -z "$2" ]; then
     list=""
 else 
-    list=`seq -f %02.0f $start $(( start + count -1 ))`
+    list=`seq  $start $(( start + count -1 ))`
 fi
 for i in "" $list; do
     if [ -n "$i" ]; then
