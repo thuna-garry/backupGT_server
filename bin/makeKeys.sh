@@ -43,10 +43,10 @@ for i in "" $list; do
     fi
 
     if [ -f "$HOME_DIR/keys/backupGT${keySuffix}.key" ]; then
-        printf 'key number %d allready exists... skipping.\n' $i
+        printf 'key number %s allready exists... skipping.\n' $i
         continue
     else
-        printf '\n======== generating key %d ============\n' $i
+        printf '\n======== generating key %s ============\n' $i
     fi
 
     ssh-keygen -t rsa \
