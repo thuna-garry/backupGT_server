@@ -19,17 +19,6 @@ start=${2:-1}    #counting from (the first key number to make)
 
 
 #--------
-# make sure that the _all.pub file exists
-#--------
-if [ ! -f "$HOME_DIR/keys/_all.pub" ]; then
-    cat > $HOME_DIR/keys/_all.pub <<-__EOF__
-	############################################################################
-	# `hostname`
-	############################################################################
-	__EOF__
-fi
-
-#--------
 # make the keys
 #--------
 if [ -z "$1" -a -z "$2" ]; then
@@ -64,3 +53,14 @@ for i in "" $list; do
     echo
 done
 
+
+#--------
+# cat all the pub files together
+#--------
+cat > $HOME_DIR/keys/_all.pub <<-__EOF__
+	############################################################################
+	# `hostname`
+	############################################################################
+	__EOF__
+
+cat $HOME_DIR/keys/backupGT*.pub  >> $HOME_DIR/keys/_all.pub
