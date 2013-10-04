@@ -23,7 +23,7 @@
 #   jobs will only be re-scheduled after a minimum wait of JOB_RETRY_INTERVAL.
 #
 # Job Status
-#   Associated with each job is a statud directory named the same as the jobFile
+#   Associated with each job is a status directory named the same as the jobFile
 #   but with $JOB_STATUS_DIR_SUFFIX appended.
 #   Within this directory there will be one status file for each module that has
 #   been previously queued and run.  After each run of the job a line will be
@@ -48,7 +48,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012.10.14'
+LAST_MODIFIED_DATE='2013.10.04'
 
 
 ###############################################################################
@@ -191,7 +191,7 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         # set default job control parameters and source the jobControl file
         JOB_INTERVAL=1440      #set default 1 day
         JOB_RETRY_INTERVAL=60  #set default 1 hour
-        JOB_PRIORITY=50        #set default
+        JOB_PRIORITY=50        #set default medium
         JOB_EXTRA_PARMS=""     #set default
         . $jobControlFile
         [ -f "${jobPath}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}${JOB_CONTROL_SUFFIX}"
@@ -223,6 +223,10 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
             JOB_PRIORITY=$saveJP
             JOB_EXTRA_PARMS="" 
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
+            [ "$VERBOSE" ] && $ECHO "               JOB_INTERVAL = " $JOB_INTERVAL
+            [ "$VERBOSE" ] && $ECHO "               JOB_RETRY_INTERVAL = " $JOB_RETRY_INTERVAL
+            [ "$VERBOSE" ] && $ECHO "               JOB_PRIORITY = " $JOB_PRIORITY
+            [ "$VERBOSE" ] && $ECHO "               JOB_EXTRA_PARMS = " $JOB_EXTRA_PARMS
 
             if needToQueue "$jobPath" "$modName"; then
                 utcWindowStart=`$ECHO "$modComment" | parseAssignment utcWindowStart`
