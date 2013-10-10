@@ -188,17 +188,26 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 #     where there are multiple jobFiles which pull from the same target) we can prevent
 #     this by having each concurrent queueRunner based on a different jobFile.
 #----------------
-exclusionListPath=/tmp/${0##*/}.$$
+exclusionListPath=/tmp/${0##*/}.1.$$
+nonExcludedQueuedJobs=/tmp/${0##*/}.2.$$
+
 $ECHO 'h' > $exclusionListPath
-$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $queueDir/mx_* 2>/dev/null \
-    | $AWK '{  gsub(/\//, "\\/"); print "/"$0"/d" }'                                  \
-    >> $exclusionListPath
-firstQueuedJobPath=$(
-    $AWK '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $queueDir/qj_* 2>/dev/null \
-        | $SED -f $exclusionListPath                                                                   \
-        | $AWK 'NR == 1 {print $1}'                                                                    \
-    )
+for f in $queueDir/mx_*; do 
+    $AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f  2>/dev/null \
+        | $AWK '{  gsub(/\//, "\\/"); print "/"$0"/d" }'                       \
+        >> $exclusionListPath
+done
+
+$ECHO -n > $nonExcludedQueuedJobs
+for f in $queueDir/qj_*; do
+    $AWK '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $f  2>/dev/null \
+        | $SED -f $exclusionListPath                                                        \
+        >> $nonExcludedQueuedJobs
+done
+firstQueuedJobPath=`$AWK 'NR == 1 {print $1}' $nonExcludedQueuedJobs`
+
 rm -f $exclusionListPath
+rm -f $nonExcludedQueuedJobs
 
 if [ -z "$firstQueuedJobPath" ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) queue is empty - exiting"
@@ -222,7 +231,7 @@ fi
 
 
 #----------------
-# now we have a queue lets consider running it
+# now we have a queued job lets consider running it
 #----------------
 jobDir=`        $SED -n -e '/^jobDir:/!d;         s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 jobFile=`       $SED -n -e '/^jobFile:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
