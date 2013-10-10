@@ -35,14 +35,14 @@
 ###############################################################################
 # Modified enqueue to chack for duplicate jobs before adding a job into the
 # execution queue.  This is done by making a checksum as part of the queued
-# file's name, and searching the queues for any file with an identical
+# file's name, and searching the queue for any file with an identical
 # checksum
 #
 # return code:  0     success
 #               1     error
 #               100   job already queued - enqueue cancelled
 #
-###############################################################################
+##############################################################################
 
 
 ###############################################################################
