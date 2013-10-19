@@ -196,7 +196,7 @@ unset SSH_AUTH_SOCK       #prevent ssh agent forwarding
 # process options
 ###############################################################################
 printMiniUsage() {
-    $ECHO "Usage: $0 -h <hostName> -t <rsync|tunnel|ssh> [-s <sourceModule>]"
+    $ECHO "Usage: $0 -h <hostName> -t <rsync|ssh>[:tunnel] [-s <sourceModule>]"
     $ECHO "          [-y | -m | -w | -d | -x] [-p y,m,w,d[,x]] [-j [<modListPath>]]"
     $ECHO "          [-v] [-D]"
 }
@@ -212,9 +212,10 @@ printFullUsage() {
     $ECHO "Options:"
     $ECHO "   -h   Hostname for this backup"
     $ECHO "   -t   The transport type to use for communication with the target host.  Must be one of "
-    $ECHO "          'ssh'      over ssh transport"
-    $ECHO "          'rsync'    native rsync (when an rsync server can be contacted directly)"
-    $ECHO "          'tunnel'   over an ssh port-forwarded tunnel"
+    $ECHO "          'rsync'          native rsync (when an rsync server can be contacted directly)"
+    $ECHO "          'ssh'            over ssh transport"
+    $ECHO "        either transport type can have the literal ':tunnel' appended to indicate that an"
+    $ECHO "        ssh port forwarded tunnel should be set up the the tansport layered in this tunnel"
     $ECHO "   -s   The module that should be backed up.  Defaults to all modules if omitted."
     $ECHO "   -y   Mark the backup as yearly"
     $ECHO "   -m   Mark the backup as monthly"
@@ -258,10 +259,13 @@ printFullUsage() {
     $ECHO
     $ECHO "   Depending on the type of transport used the following environment variables"
     $ECHO "   can be set to override default behaviour"
-    $ECHO '       SSH_HOST    default: hostname supplied as -h'
-    $ECHO '       SSH_OPTS    default: "-l backupGT"'
-    $ECHO '       RSYNC_HOST  default: hostname supplied as -h'
-    $ECHO '       RSYNC_OPTS  default: "-vi"'
+    $ECHO '       SSH_HOST     default: hostname supplied as -h'
+    $ECHO '       SSH_OPTS     default: "-l backupGT"'
+    $ECHO '       RSYNC_HOST   default: hostname supplied as -h'
+    $ECHO '       RSYNC_OPTS   default: "-vi"'
+    $ECHO '       TUNNEL_HOST  hostName/ip of machine providing tunnel to target'
+    $ECHO '       TUNNEL_OPTS  must contain at least an ssh local tunnel specification'
+    $ECHO '                    eg "-L 1234:hostToWhichTunnelShouldConnect:22"'
 }
 
 
@@ -295,12 +299,18 @@ parseOptions() {
     
             t)
                 local val=`$ECHO ${OPTARG} | $SED -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'`
-                case $val in
-                    rsync)  TRANSPORT=$val ;;
-                    tunnel) TRANSPORT=$val ;;
-                    ssh)    TRANSPORT=$val ;;
+                case ${val%%:*} in
+                    rsync)  TRANSPORT=rsync ;;
+                    ssh)    TRANSPORT=ssh ;;
                     *)      printMiniUsage 1>&2
-                            $ECHO "Invalid type of transport: $TRANSPORT" 1>&2
+                            $ECHO "Invalid type of transport: ${OPTARG}" 1>&2
+                            exit 1
+                            ;;
+                esac
+                case ${val##*:} in
+                    tunnel) TUNNEL=1 ;;
+                    *)      printMiniUsage 1>&2
+                            $ECHO "Invalid type of transport: ${OPTARG}" 1>&2
                             exit 1
                             ;;
                 esac
@@ -429,16 +439,8 @@ defaultEnvironment() {
 
 getModuleList () {
     # obtain complete list of modules from target
-    
-    local rc
+    [ "$TUNNEL" ] && tunnel_create
     case "$TRANSPORT" in
-        tunnel)
-            tunnel_create
-            [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
-                                  $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
-            rc=$?
-            tunnel_destroy
-            ;;
         rsync)
             [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
                                   $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
@@ -450,6 +452,7 @@ getModuleList () {
             rc=$?
             ;;
     esac
+    [ "$TUNNEL" ] && tunnel_destroy
     return $rc  #only accessible to caller if output redirected to (tmp)file
 }
 
@@ -503,7 +506,7 @@ doList () {
     $ECHO
 
     # process each module
-    [ "$TRANSPORT" = "tunnel" ] && tunnel_create
+    [ "$TUNNEL" ] && tunnel_create
     local modName
     local modComment
     local auto
@@ -535,7 +538,7 @@ doList () {
     done <<< "`$CAT $modListPath`"
     $ECHO
     $RM -f "$modListPath"
-    [ "$TRANSPORT" = "tunnel" ] && tunnel_destroy
+    [ "$TUNNEL" ] && tunnel_destroy
     return $rc
 }
 
@@ -665,7 +668,7 @@ doModule_file () {
     local rcDetail  #actual return code from the underlying backup/transfer
     local rcReturn  #the rc that we are going to return to the caller of this procedure
     case $method.$TRANSPORT in 
-        rsync.rsync | rsync.tunnel)
+        rsync.rsync)
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
 		$SUDO $RSYNC -a $RSYNC_OPTS  
 		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
@@ -1029,9 +1032,9 @@ doModule_zfs2 () {
 tunnel_create () {
     trap tunnel_destroy 0 1 2 3 4 15
     $ECHO -n "    creating tunnel... " 1>&2
-    [ "$DEBUG" ] && $ECHO -ne "\n        " 1>&2
-    [ "$DEBUG" ] && $ECHO $SSH $SSH_OPTS 1>&2
-                          $SSH $SSH_OPTS &
+    [ "$DEBUG" ] && $ECHO -ne '\n        '               1>&2
+    [ "$DEBUG" ] && $ECHO $SSH $TUNNEL_OPTS $TUNNEL_HOST 1>&2
+                          $SSH $TUNNEL_OPTS $TUNNEL_HOST &
     tunnelPid=$!
     $SLEEP 5
     $ECHO "    done" 1>&2
