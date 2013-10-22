@@ -299,7 +299,7 @@ parseOptions() {
     
             t)
                 local val=`$ECHO ${OPTARG} | $SED -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'`
-	        case ${val%%:*} in
+                case ${val%%:*} in
                     rsync)  TRANSPORT=rsync ;;
                     ssh)    TRANSPORT=ssh ;;
                     *)      printMiniUsage 1>&2
