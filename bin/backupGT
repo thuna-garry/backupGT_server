@@ -299,7 +299,7 @@ parseOptions() {
     
             t)
                 local val=`$ECHO ${OPTARG} | $SED -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'`
-                case ${val%%:*} in
+	        case ${val%%:*} in
                     rsync)  TRANSPORT=rsync ;;
                     ssh)    TRANSPORT=ssh ;;
                     *)      printMiniUsage 1>&2
@@ -308,11 +308,8 @@ parseOptions() {
                             ;;
                 esac
                 case ${val##*:} in
-                    tunnel) TUNNEL=1 ;;
-                    *)      printMiniUsage 1>&2
-                            $ECHO "Invalid type of transport: ${OPTARG}" 1>&2
-                            exit 1
-                            ;;
+                    tunnel) TUNNEL=1   ;;
+                    *)      TUNNEL=""  ;;
                 esac
                 ;;
     
@@ -474,7 +471,9 @@ doList () {
     getModuleList > $modListPath
     rc=$?
     if [ $rc -ne 0 ]; then
-        $ECHO "    error encountered aborting."
+        $ECHO "    ERROR: failed to retrieve module list"
+        $ECHO "        check communication with target host"
+        [ "$MODULE" ] && $ECHO "        and that it has a module named \"$MODULE\""
         $RM -f "$modListPath"
         return $rc
     fi
