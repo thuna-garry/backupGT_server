@@ -37,109 +37,124 @@
 # are case sensitive
 #   option    usage    
 #   ======    ===================================================
-#   method    scope: all    suppliedBy: targetHost (required)
-#             values: < rsync | tar | zfs | zfs.rsync >
-#             The method to use for backing up the module.
+#   method     scope: all    suppliedBy: targetHost (required)
+#              values: < rsync | tar | zfs | zfs.rsync >
+#              The method to use for backing up the module.
 #
-#   auto      scope: any    suppliedBy: targetHost (optional)
-#             values: < true | false >
-#             Should this module be included when default modules are being
-#             backed up.
+#   auto       scope: any    suppliedBy: targetHost (optional)
+#              values: < true | false >
+#              Should this module be included when default modules are being
+#              backed up.
 #
-#             If the module is set as 'auto = false' then backupGT will     
-#             exclude the module from the list it provides from the target
-#             host when a full module list is requested (this is achived
-#             with the magic cookie target name _listModues") and therefore
-#             will not be backed up by default.  However, the module
-#             can still be backed up by backupGT if listed explicitly on
-#             the command line with the '-s' option.
+#              If the module is set as 'auto = false' then backupGT will     
+#              exclude the module from the list it provides from the target
+#              host when a full module list is requested (this is achived
+#              with the magic cookie target name _listModues") and therefore
+#              will not be backed up by default.  However, the module
+#              can still be backed up by backupGT if listed explicitly on
+#              the command line with the '-s' option.
 #        
-#             The latter can be quite useful in specific cases.  One
-#             example is a server running oracle that I am responsible
-#             to back up.  The oracle software, configuration, and its
-#             periodic exports are each backed up daily as separate modules
-#             so each has auto=true in the comment.  The archivelogs
-#             (which for those unfamiliar with oracle are log files needed
-#             for point-in-time recovery) need to be backed up very
-#             frequently so if the server goes up in flames we can recover
-#             to the point in time of the last log entry.  In this case
-#             I have marked the module with 'auto = false' so that it is
-#             not part of the daily 'do all modules' backup, and a separate
-#             cron entry runs backupGT every twenty minutes with '-s
-#             archiveLog -x -p 0,0,0,0,360' options (the -x and -p are
-#             to allow custom retension management on stored backup sets).
+#              The latter can be quite useful in specific cases.  One
+#              example is a server running oracle that I am responsible
+#              to back up.  The oracle software, configuration, and its
+#              periodic exports are each backed up daily as separate modules
+#              so each has auto=true in the comment.  The archivelogs
+#              (which for those unfamiliar with oracle are log files needed
+#              for point-in-time recovery) need to be backed up very
+#              frequently so if the server goes up in flames we can recover
+#              to the point in time of the last log entry.  In this case
+#              I have marked the module with 'auto = false' so that it is
+#              not part of the daily 'do all modules' backup, and a separate
+#              cron entry runs backupGT every twenty minutes with '-s
+#              archiveLog -x -p 0,0,0,0,360' options (the -x and -p are
+#              to allow custom retension management on stored backup sets).
 #
-#   relDS     scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
-#             values: a valid zfs dataset name
-#             Where the module is a zfs dataset this is the relative dataset
-#             name of the dataset - ie the full dataset name with the STORAGE_DS
-#             prefix removed.  This is necessary because the target host and
-#             backup server may have different STORAGE_DSs (both in name and
-#             depth) and they are not (nor need to be) known to each other.
+#   relDS      scope: zfs,zfs.rsync    suppliedBy: targetHost (required)
+#              values: a valid zfs dataset name
+#              Where the module is a zfs dataset this is the relative dataset
+#              name of the dataset - ie the full dataset name with the STORAGE_DS
+#              prefix removed.  This is necessary because the target host and
+#              backup server may have different STORAGE_DSs (both in name and
+#              depth) and they are not (nor need to be) known to each other.
 #
-#   origHost  scope: rsync,tar   suppliedBy: targetHost (optional)
-#             values: a valid (DNS) host name 
-#             Where the target host has a backup repository for some other
-#             target host and this backup will be a replicated copy, this is
-#             the hostName of the originaing (master) copy.
+#   origHost   scope: rsync,tar   suppliedBy: targetHost (optional)
+#              values: a valid (DNS) host name 
+#              Where the target host has a backup repository for some other
+#              target host and this backup will be a replicated copy, this is
+#              the hostName of the originaing (master) copy.
 #
-#   origMod   scope: rsync,tar    suppliedBy: targetHost (optional)
-#             values: a valid module name (without whitespace)
-#             Where the target host has a backup repository for some other
-#             target host and this backup will be a replicated copy, this is
-#             the hostName of the originaing (master) copy.  The value must
-#             meet the syntax rules of an rsynd.conf module names and
-#             additionally may not have embedded whitespace.
+#   origMod    scope: rsync,tar    suppliedBy: targetHost (optional)
+#              values: a valid module name (without whitespace)
+#              Where the target host has a backup repository for some other
+#              target host and this backup will be a replicated copy, this is
+#              the hostName of the originaing (master) copy.  The value must
+#              meet the syntax rules of an rsynd.conf module names and
+#              additionally may not have embedded whitespace.
 #
-#   origName  scope: rsync,tar    suppliedBy: targetHost (optional)
-#             values: a valid file name (without whitespace)
-#             Where the target host has a backup repository for some other
-#             target host and this backup will be a replicated copy, this is
-#             the original name of the backup.  The origName of a backup will
-#             typically have embedded the date when the original backup was
-#             made, and its retension set identified.
+#   origName   scope: rsync,tar    suppliedBy: targetHost (optional)
+#              values: a valid file name (without whitespace)
+#              Where the target host has a backup repository for some other
+#              target host and this backup will be a replicated copy, this is
+#              the original name of the backup.  The origName of a backup will
+#              typically have embedded the date when the original backup was
+#              made, and its retension set identified.
 #
-#   key       scope: rsync,tar    suppliedBy: targetHost (optional)
-#             values: a valid ssh key file enumerator (explained below)
-#             Where the target host has a simplified ssh server which does
-#             not provide SSH_ORIGINAL_COMMAND environment variable, there
-#             is no convenient way to notify the target as to which module
-#             is being requested by the backup service.  Using the 'key'
-#             option provides a means to communicate the reqested module by
-#             having the target enumerate each module with a key value.  The
-#             backup service will then use a different (enumerated) ssh key
-#             for each module request.  This option tells the backup service
-#             which ssh key to use. The backup service provider will need to
-#             have previously supplied/configured the target with a sufficient
-#             number of (enumerated) ssh keys.
+#   key        scope: rsync,tar    suppliedBy: targetHost (optional)
+#              values: a valid ssh key file enumerator (explained below)
+#              Where the target host has a simplified ssh server which does
+#              not provide SSH_ORIGINAL_COMMAND environment variable, there
+#              is no convenient way to notify the target as to which module
+#              is being requested by the backup service.  Using the 'key'
+#              option provides a means to communicate the reqested module by
+#              having the target enumerate each module with a key value.  The
+#              backup service will then use a different (enumerated) ssh key
+#              for each module request.  This option tells the backup service
+#              which ssh key to use. The backup service provider will need to
+#              have previously supplied/configured the target with a sufficient
+#              number of (enumerated) ssh keys.
 #
-#             The key value will be used on the backup service side (this side)
-#             to select a keyfile for use by the ssh connection.  Specifically
-#             the SSH_OPTS string will be searched for a key-file name and the
-#             key option value will be used as a replacement string to modify
-#             any found key-file name to an emumerated key-file name.
+#              The key value will be used on the backup service side (this side)
+#              to select a keyfile for use by the ssh connection.  Specifically
+#              the SSH_OPTS string will be searched for a key-file name and the
+#              key option value will be used as a replacement string to modify
+#              any found key-file name to an emumerated key-file name.
 # 
-#             For example;
-#                  if the option was specified as 'key=34'
-#             and  the KEYFILE_SUFFIX (config variable) was '.key'
-#             and  SSH_OPTS contained the string 'my_rsa_private.key'
-#             then SSH_OPTS will be modified so that any occurance of '.key'
-#                  is replaced with '_34.key' and the result will be
-#                  'my_rsa_private_34.key'
+#              For example;
+#                   if the option was specified as 'key=34'
+#              and  the KEYFILE_SUFFIX (config variable) was '.key'
+#              and  SSH_OPTS contained the string 'my_rsa_private.key'
+#              then SSH_OPTS will be modified so that any occurance of '.key'
+#                   is replaced with '_34.key' and the result will be
+#                   'my_rsa_private_34.key'
 # 
-#           NOTE: targets requiring the use of the 'key' option are unable
-#                 to use any backupServer specified options
+#              NOTE: targets requiring the use of the 'key' option are unable
+#                    to use any backupServer specified options
 # 
-#   lastSnap  scope: zfs,zfs.rsync    suppliedBy: backupServer (required)
-#             values: a valid zfs snapshot name
-#             When backing up zfs snapshots incrementally the target host
-#             needs to know the last snapshot that has been received by the
-#             backup server.  This option communicates to the target host
-#             the snapshot name (that portion of the full name which appears
-#             after the '@'). 
+#   prune      scope: any    suppliedBy: targetHost (optional)
+#              values: a valid retension string as per the '-p' option
+#              Allows the target to explicitly request a specific backup
+#              retension policy.
+#
+#   retainType scope: all    suppliedBy: backupServer (required)
+#              values: one of Y,M,W,D,X
+#              Sent to the target to inform it of the type of backup being
+#              made.
+#
+#   retainAmt  scope: all    suppliedBy: backupServer (required)
+#              values: small positive integer
+#              Sent to the target to inform it of the type of resolved retension
+#              amount for the backup being made.
+#
+#   lastSnap   scope: zfs,zfs.rsync    suppliedBy: backupServer (required)
+#              values: a valid zfs snapshot name
+#              When backing up zfs snapshots incrementally the target host
+#              needs to know the last snapshot that has been received by the
+#              backup server.  This option communicates to the target host
+#              the snapshot name (that portion of the full name which appears
+#              after the '@'). 
 #
 # The following options are used/required by the target but are unused by this 
-# script.  As any options received by the target are passed back to it as part
+# script.  As any options received from the target are passed back to it as part
 # of the requesting command, the target can use additional options to store
 # target-local module information.  The options listed here are those that are
 # used/required by the companion backupGT_target script
@@ -413,16 +428,19 @@ parseOptions() {
             RETENSION_TYPE='D'
         fi
     fi
+    case $RETENSION_TYPE in
+        Y) RETENSION_AMT=${RETAIN_YEARLY}  ;;
+        M) RETENSION_AMT=${RETAIN_MONTHLY} ;;
+        W) RETENSION_AMT=${RETAIN_WEEKLY}  ;;
+        D) RETENSION_AMT=${RETAIN_DAILY}   ;;
+        X) RETENSION_AMT=${RETAIN_EXTRA}   ;;
+    esac
  
     if [ "$DEBUG" ]; then
         $PRINTF 'debug: SRC_NAME       = "%s"\n' $SRC_NAME        1>&2
         $PRINTF 'debug: MODULE         = "%s"\n' $MODULE          1>&2
         $PRINTF 'debug: RETENSION_TYPE = "%s"\n' $RETENSION_TYPE  1>&2
-        $PRINTF 'debug: RETAIN_YEARLY  = "%s"\n' $RETAIN_YEARLY   1>&2
-        $PRINTF 'debug: RETAIN_MONTHLY = "%s"\n' $RETAIN_MONTHLY  1>&2
-        $PRINTF 'debug: RETAIN_WEEKLY  = "%s"\n' $RETAIN_WEEKLY   1>&2
-        $PRINTF 'debug: RETAIN_DAILY   = "%s"\n' $RETAIN_DAILY    1>&2
-        $PRINTF 'debug: RETAIN_EXTRA   = "%s"\n' $RETAIN_EXTRA    1>&2
+        $PRINTF 'debug: RETENSION_AMT  = "%s"\n' $RETENSION_TYPE  1>&2
     fi
 
     COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
@@ -552,13 +570,18 @@ doModule () {
     local modComment="$@"
     local method=`$ECHO $modComment | parseAssignment method`
     local rc
+ 
+    # append required module options to modComment
+    modComment="`$ECHO $modComment | makeAssignment retainType $RETENSION_TYPE`"
+    modComment="`$ECHO $modComment | makeAssignment retainAmt  $RETENSION_AMT`"
+
     case "$method" in 
         rsync|tar)
-            doModule_file "$@"
+            doModule_file "$modComment"
             rc=$?
             ;;
         zfs|zfs.rsync)
-            doModule_zfs "$@"
+            doModule_zfs  "$modComment"
             rc=$?
             ;;
     esac
@@ -1064,36 +1087,30 @@ pruneOldBackups() {
     local modDir="$1"
     local modDS="$2"
 
-    # prune each retention type 
-    local retType
-    local retainAmt
-    for retType in Y M W D X; do
-        case $retType in
-            Y) retainAmt=${RETAIN_YEARLY}  ;;
-            M) retainAmt=${RETAIN_MONTHLY} ;;
-            W) retainAmt=${RETAIN_WEEKLY}  ;;
-            D) retainAmt=${RETAIN_DAILY}   ;;
-            X) retainAmt=${RETAIN_EXTRA}   ;;
-        esac
-        [ ! "$retainAmt" -gt 0 ] && continue
-        [ "$DEBUG" ] && $ECHO '  debug: pruning directory %s=%s' $retType $retainAmt 1>&2
+    # don't prune unless RETENSION_AMT defined and non-zero
+    [ ! "$RETENSION_AMT" -gt 0 ] && continue
 
-        # prune ZFS datasets
-        if [ "$STORAGE_IS_ZFS" ]; then
-            local snapshot
-            for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null | $GREP _${retType}\$ | $SORT -r | $SED -e "1,${retainAmt}d"`; do
-                $ECHO "    pruning snapshot $snapshot"
-                $NICE $SUDO $ZFS destroy $snapshot
-            done
-        fi
+    [ "$DEBUG" ] && $ECHO "  debug: pruning backups $RETENSION_TYPE=$RETENSION_AMT" 1>&2
 
-        # prune directories
-        local dir
-        for dir in `$LS -dr ${modDir}/*_${retType} 2>/dev/null | $SED -e "1,${retainAmt}d"`; do
-            $ECHO "    pruning directory $dir"
-            $NICE $SUDO $RM -rf "$dir"
-            $NICE $SUDO $RM -rf "$dir.log"
+    # prune ZFS datasets
+    if [ "$STORAGE_IS_ZFS" ]; then
+        local snapshot
+        for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null  \
+                         | $GREP _${RETENSION_TYPE}\$  \
+                         | $SORT -r \
+                         | $SED -e "1,${RETENSION_AMT}d"`; do
+            $ECHO "    pruning snapshot $snapshot"
+            $NICE $SUDO $ZFS destroy $snapshot
         done
+    fi
+
+    # prune directories
+    local dir
+    for dir in `$LS -dr ${modDir}/*_${RETENSION_TYPE} 2>/dev/null \
+                | $SED -e "1,${RETENSION_AMT}d"`; do
+        $ECHO "    pruning directory $dir"
+        $NICE $SUDO $RM -rf "$dir"
+        $NICE $SUDO $RM -rf "$dir.log"
     done
 
     # remove any orphaned log files
@@ -1107,7 +1124,8 @@ pruneOldBackups() {
 
     # remove any non-retained snapshots
     local snapshot
-    for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null | $GREP -v '_[YMWDX]$'` ; do
+    for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null \
+                     | $GREP -v '_[YMWDX]$'` ; do
         $ECHO "  pruning snapshot $snapshot"
         $NICE $SUDO $ZFS destroy $snapshot
     done
