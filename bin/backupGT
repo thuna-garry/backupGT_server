@@ -191,6 +191,9 @@ ELAPSED_CMD="$DATE +%s"
 
 unset SSH_AUTH_SOCK       #prevent ssh agent forwarding
 
+STORAGE_IS_ZFS=`$ZFS get -H -o value type $STORAGE_DS 2>/dev/null`
+
+
 
 ###############################################################################
 # process options
@@ -620,7 +623,7 @@ doModule_file () {
         fi
     else
         # create the modDir and set it properties
-        if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
+        if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
             $SUDO $ZFS create -p                         $modDS
             $SUDO $ZFS set mountpoint=$modDir            $modDS
             $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
@@ -634,12 +637,12 @@ doModule_file () {
     # if the modDir is supposed to be a zfs dataset (it may not originally have been)
     # see if it is a dataset, and if so does it needs to have the user properties
     # reset (due to target changing the method)
-    if [ "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
+    if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
         if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
-            if [ "`$ZFS get -o value -H ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
+            if [ "`$ZFS get -H -o value ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
                 $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
             fi
-            if [ "`$ZFS get -o value -H ${ZFS_UPROP_METHOD} $modDS 2>/dev/null`" != "${method}" ]; then
+            if [ "`$ZFS get -H -o value ${ZFS_UPROP_METHOD} $modDS 2>/dev/null`" != "${method}" ]; then
                 $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
             fi
         fi
@@ -844,11 +847,18 @@ doModule_file () {
             esac
             rcReturn=0
 
+            # if our STORAGE_DS exists (ie our backup store is in fact ZFS), and we have individual
+            # datasets for each module, then make a snapshot of the module so that secondary backups 
+            # can use zfs send/receive efficiently
+            if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
+                $SUDO $ZFS create $modDS@${timeStamp}_${RETENSION_TYPE}
+            fi
+
             # prune old backups
             {
                 $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
                 elapsedStart=`$ELAPSED_CMD`
-                pruneOldBackups "$modDir"
+                pruneOldBackups "$modDir" "modDS"
                 elapsedEnd=`$ELAPSED_CMD`
                 elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
                 $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
@@ -1052,33 +1062,16 @@ tunnel_destroy () {
 ###############################################################################
 # routines for pruning backups
 ###############################################################################
-pruneOldBackups () {
+pruneOldBackups() {
     local modDir="$1"
+    local modDS="$2"
 
-    local retainAmt
-    local sedPattern
-    case $RETENSION_TYPE in
-        Y) retainAmt=${RETAIN_YEARLY}  ;;
-        M) retainAmt=${RETAIN_MONTHLY} ;;
-        W) retainAmt=${RETAIN_WEEKLY}  ;;
-        D) retainAmt=${RETAIN_DAILY}   ;;
-        X) retainAmt=${RETAIN_EXTRA}   ;;
-    esac
-    if [ "$retainAmt" -gt 0 ]; then
-        sedPattern="1,${retainAmt}d"
-        [ "$DEBUG" ] && $PRINTF 'debug: pruning %s=%s\n' $RETENSION_TYPE $retainAmt 1>&2
-        [ "$DEBUG" ] && $PRINTF 'debug: sed pattern: %s\n' $sedPattern 1>&2 
-    else
-        [ "$DEBUG" ] && $ECHO "retension amount is 0 so pruning will be skipped"
-        return
-    fi
-
-    # do the prune
-    local dir
-    for dir in `$LS -dr ${modDir}/*_${RETENSION_TYPE} 2>/dev/null | $SED -e "$sedPattern"`; do
-        $ECHO "  pruning $dir"
-        $NICE $SUDO $RM -rf "$dir"
-        $NICE $SUDO $RM -rf "$dir.log"
+    # prune each retention type 
+    for retType in Y M W D X: do
+        if [ "$STORAGE_IS_ZFS" ]; then
+            pruneOldBackups_zfsSnapshots $modDS $retType
+        fi
+        pruneOldBackups_files $modDir $retType
     done
 
     # remove any orphaned log files
@@ -1089,8 +1082,73 @@ pruneOldBackups () {
         $ECHO "  pruning orphaned log file $lf"
         $NICE $SUDO $RM -rf "$lf"
     done
+
+    # remove any non-retained snapshots
+    local snapshot
+    for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null | $GREP '_[YMWDX]$'` ; do
+        $ECHO "  pruning snapshot $snapshot"
+        $NICE $SUDO $ZFS destroy $sanpshot
+    done
 }
 
+pruneOldBackups_files() {
+    local modDir="$1"
+    local retType="$2"
+
+    local retainAmt
+    local sedPattern
+    case $retType in
+        Y) retainAmt=${RETAIN_YEARLY}  ;;
+        M) retainAmt=${RETAIN_MONTHLY} ;;
+        W) retainAmt=${RETAIN_WEEKLY}  ;;
+        D) retainAmt=${RETAIN_DAILY}   ;;
+        X) retainAmt=${RETAIN_EXTRA}   ;;
+    esac
+    if [ "$retainAmt" -gt 0 ]; then
+        sedPattern="1,${retainAmt}d"
+        [ "$DEBUG" ] && $PRINTF 'debug: pruning %s=%s (sed pattern = "%s")\n' $retType $retainAmt $sedPattern 1>&2
+    else
+        [ "$DEBUG" ] && $ECHO "retension amount is 0 so pruning will be skipped"
+        return
+    fi
+
+    # do the prune
+    local dir
+    for dir in `$LS -dr ${modDir}/*_${retType} 2>/dev/null | $SED -e "$sedPattern"`; do
+        $ECHO "  pruning dir $dir"
+        $NICE $SUDO $RM -rf "$dir"
+        $NICE $SUDO $RM -rf "$dir.log"
+    done
+}
+
+pruneOldBackups_zfsSnapshots() {
+    local modDS="$1"
+    local retType="$2"
+
+    local retainAmt
+    local sedPattern
+    case $retType in
+        Y) retainAmt=${RETAIN_YEARLY}  ;;
+        M) retainAmt=${RETAIN_MONTHLY} ;;
+        W) retainAmt=${RETAIN_WEEKLY}  ;;
+        D) retainAmt=${RETAIN_DAILY}   ;;
+        X) retainAmt=${RETAIN_EXTRA}   ;;
+    esac
+    if [ "$retainAmt" -gt 0 ]; then
+        sedPattern="1,${retainAmt}d"
+        [ "$DEBUG" ] && $PRINTF 'debug: pruning %s=%s (sed pattern = "%s")\n' $retType $retainAmt $sedPattern 1>&2
+    else
+        [ "$DEBUG" ] && $ECHO "retension amount is 0 so pruning will be skipped"
+        return
+    fi
+
+    # do the prune
+    local snapshot
+    for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null | $GREP _${retType}\$ | $SORT -r | $SED -e "$sedPattern"`; do
+        $ECHO "  pruning snapshot $snapshot"
+        $NICE $SUDO $ZFS destroy $sanpshot
+    done
+}
 
 
 ###############################################################################
