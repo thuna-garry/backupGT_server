@@ -150,7 +150,6 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 # if the optJobPath is specified replace with full path but if it is a symlink
 # do not dereferece/follow the link
-echo =============================
 if [ -n "$optJobPath" ]; then
     optJobDir=`$DIRNAME "$optJobPath"`
     optJobDir=`getCanonicalDir "$optJobDir"`
