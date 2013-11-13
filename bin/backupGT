@@ -1092,7 +1092,7 @@ pruneOldBackups() {
 
     [ "$DEBUG" ] && $ECHO "  debug: pruning backups $RETENSION_TYPE=$RETENSION_AMT" 1>&2
 
-    # prune ZFS datasets
+    # prune ZFS snapshots
     if [ "$STORAGE_IS_ZFS" ]; then
         local snapshot
         for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null  \
