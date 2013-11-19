@@ -50,6 +50,9 @@ printFullUsage() {
     $ECHO "  -q    include current job queue state"
     $ECHO "  -u    include a summary for space utilization"
     $ECHO "  -H    scripted mode do not display any headers, footers or other decoration"
+    $ECHO "  -f <file>  write output to file instead of standard output (if file is not"
+    $ECHO "             specified then STORAGE_ROOT/status will be used)"
+    $ECHO 
     $ECHO "If neither -j, -t, -q, or -u is specified all are assumed"
     $ECHO 
     $ECHO "Jobs are identified by searching the JOB_ROOT for directories which are named"
@@ -70,7 +73,6 @@ printFullUsage() {
     $ECHO 
 }
 
-
 SHOW_ALL=1
 SHOW_JOB_STATUS=
 SHOW_HOST_STATUS=
@@ -78,17 +80,22 @@ SHOW_QUEUE_STATUS=
 SHOW_SPACE_UTIL=
 SCRIPTED_MODE=
 parseOptions() {
-    while getopts ":h:jtquH" arg; do
+    while getopts ":h:jtquf:H" arg; do
         case $arg in
             h) TARGET_HOST=${OPTARG};;
             j) SHOW_JOB_STATUS=1  ;	SHOW_ALL= ;;
             t) SHOW_HOST_STATUS=1 ;	SHOW_ALL= ;;
             q) SHOW_QUEUE_STATUS=1 ;	SHOW_ALL= ;;
             u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
+            f) exec > ${OPTARG};;
             H) SCRIPTED_MODE=1  ;	SHOW_ALL= ;;
-            :) printFullUsage 1>&2
-               $ECHO "Option -${OPTARG} requires an argument." 1>&2
-               exit 1
+            :) if [ "${OPTARG}" == 'f' ]; then
+                   exec > ${STORAGE_ROOT}/status
+               else
+                   printFullUsage 1>&2
+                   $ECHO "Option -${OPTARG} requires an argument." 1>&2
+                   exit 1
+               fi
                ;;
             *) printFullUsage 1>&2
                $ECHO "Option -${OPTARG} not recognized as a valid option." 1>&2
