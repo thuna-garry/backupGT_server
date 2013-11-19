@@ -4,8 +4,8 @@ PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 
 #minute hour    mday    month   wday    command
 #====== ======= ======= ======= ======= ======================================
-1-59/10 *       *       *       *       /usr/local/backupGT_server/bin/scheduleJobs
-2-59/10 *       *       *       *       /usr/local/backupGT_server/bin/runQueue
+1-59/10 *       *       *       *       /usr/local/backupGT_server/bin/scheduleJobs; /usr/local/backupGT_server/bin/runQueue
+2-59/10 *       *       *       *       nice /usr/local/backupGT_server/bin/showStatus > /data/backupGT/status
 
 1       */4     *       *       *       (cd /usr/local/backupGT_server; git pull) > /dev/null 2>&1
 0       6       *       *       *       /usr/local/backupGT_server/bin/showStatus | mail -s "`hostname -s` Backup Status" is.backups@domain.com
