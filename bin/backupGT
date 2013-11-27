@@ -648,7 +648,6 @@ doModule_file () {
         # create the modDir and set it properties
         if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
             $SUDO $ZFS create -p                         $modDS
-            $SUDO $ZFS set mountpoint=$modDir            $modDS
             $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
             $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
         else
@@ -876,16 +875,7 @@ doModule_file () {
                 $SUDO $ZFS snapshot ${modDS}@${timeStamp}_${RETENSION_TYPE}
             fi
 
-            # prune old backups
-            {
-                $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
-                elapsedStart=`$ELAPSED_CMD`
-                pruneOldBackups "$modDir" "$modDS"
-                elapsedEnd=`$ELAPSED_CMD`
-                elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
-                $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
-                $ECHO "  duration = $elapsedMin minutes"
-            } | $TEE -a $newLog
+            pruneOldBackups "$modDir" "$modDS" | $TEE -a $newLog
             ;;
 
         *)
@@ -942,7 +932,7 @@ doModule_zfs2 () {
     local method=` $ECHO $modComment | parseAssignment method`
     local relDS=`  $ECHO $modComment | parseAssignment relDS`
 
-    local dataset=${STORAGE_DS}/${relDS}
+    local modDS=${STORAGE_DS}/${relDS}
     local timeStamp=`$DATE_CMD`
     local elapsedStart=`$ELAPSED_CMD`
     local workDir=${TMP_DIR}
@@ -951,11 +941,11 @@ doModule_zfs2 () {
     local workLog="${logDir}/${MODULE}.log"
     mkdir -p "$logDir"
 
-    [ "$DEBUG" ] && $PRINTF 'debug: method   = "%s"\n' $method      1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: relDS    = "%s"\n' $relDS       1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: dataset  = "%s"\n' $dataset     1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: workDir  = "%s"\n' $workDir     1>&2
-    [ "$DEBUG" ] && $PRINTF 'debug: workLog  = "%s"\n' $workLog     1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: method  = "%s"\n' $method    1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: relDS   = "%s"\n' $relDS     1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: modDS   = "%s"\n' $modDS     1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: workDir = "%s"\n' $workDir   1>&2
+    [ "$DEBUG" ] && $PRINTF 'debug: workLog = "%s"\n' $workLog   1>&2
 
     $ECHO "=============================================================================="
     $ECHO "= Backup started for $MODULE at $timeStamp"
@@ -963,16 +953,16 @@ doModule_zfs2 () {
     $ECHO "Using method: $method"
     $ECHO "WIP log:      $workLog"
 
-    # detmine the last snapshot and make sure the target dataset exists
-    if [ "`$ZFS list -H -o name $dataset 2>/dev/null`" = "$dataset" ] ; then
-        lastSnap=`$ZFS list -H -o name -t snapshot -d 1 -s name "$dataset" | $TAIL -1 | $CUT -d '@' -f 2`
+    # detmine the last snapshot and make sure the target modDS exists
+    if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
+        lastSnap=`$ZFS list -H -o name -t snapshot -d 1 -s name "$modDS" | $TAIL -1 | $CUT -d '@' -f 2`
         $ECHO lastSnap: $lastSnap
     else
-        $ECHO -n "$dataset" does not exist on this system. Creating...
-        $SUDO $ZFS create -p "$dataset"
-        $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes "$dataset"
-        $SUDO $ZFS set ${ZFS_UPROP_METHOD}=zfs    "$dataset"
-        $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$ZFS list -H -r -o mountpoint $dataset`
+        $ECHO -n "$modDS" does not exist on this system. Creating...
+        $SUDO $ZFS create -p "$modDS"
+        $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes "$modDS"
+        $SUDO $ZFS set ${ZFS_UPROP_METHOD}=zfs    "$modDS"
+        $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$ZFS list -H -r -o mountpoint $modDS`
         $ECHO    " done."
         lastSnap=""
     fi
@@ -983,11 +973,11 @@ doModule_zfs2 () {
         zfs)
             [ "$DEBUG" ] && $CAT <<-__CMD__
 		$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"
-		    | $SUDO $ZFS receive -vuF "$dataset"
+		    | $SUDO $ZFS receive -vuF "$modDS"
 		__CMD__
         
             $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"  \
-                | $SUDO $ZFS receive -vuF "$dataset" 
+                | $SUDO $ZFS receive -vuF "$modDS" 
             rc=$?
             ;;
 
@@ -1028,7 +1018,7 @@ doModule_zfs2 () {
             $ECHO "=============================================================================="
     
             elapsedStart=`$ELAPSED_CMD`
-            gzcat ${workDir}/${MODULE}.snapExport.gz | $SUDO $ZFS receive -vuF "$dataset"
+            gzcat ${workDir}/${MODULE}.snapExport.gz | $SUDO $ZFS receive -vuF "$modDS"
             rc=$?
             elapsedEnd=`$ELAPSED_CMD`
             elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
@@ -1050,6 +1040,10 @@ doModule_zfs2 () {
             fi
             $ECHO "     duration = $elapsedMin minutes"
             $ECHO "=============================================================================="
+
+
+            local modDir=`zfs list -Ho mountpoint "$modDS"`
+            pruneOldBackups "$modDir" "$modDS" | $TEE -a $workLog
             ;;
     esac
     return $rc
@@ -1088,7 +1082,10 @@ pruneOldBackups() {
     local modDS="$2"
 
     # don't prune unless RETENSION_AMT defined and non-zero
-    [ ! "$RETENSION_AMT" -gt 0 ] && continue
+    [ ! "$RETENSION_AMT" -gt 0 ] && return
+
+    $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
+    elapsedStart=`$ELAPSED_CMD`
 
     [ "$DEBUG" ] && $ECHO "  debug: pruning backups $RETENSION_TYPE=$RETENSION_AMT" 1>&2
 
@@ -1129,6 +1126,11 @@ pruneOldBackups() {
         $ECHO "  pruning snapshot $snapshot"
         $NICE $SUDO $ZFS destroy $snapshot
     done
+
+    elapsedEnd=`$ELAPSED_CMD`
+    elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
+    $ECHO "pruning completed for $SRC_NAME/$MODULE at `$DATE_CMD`"
+    $ECHO "  duration = $elapsedMin minutes"
 }
 
 
