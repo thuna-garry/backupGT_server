@@ -48,8 +48,8 @@
 #
 #              If the module is set as 'auto = false' then backupGT will     
 #              exclude the module from the list it provides from the target
-#              host when a full module list is requested (this is achived
-#              with the magic cookie target name _listModues") and therefore
+#              host when a full module list is requested (this is achieved
+#              with the magic cookie target name "_listModues") and therefore
 #              will not be backed up by default.  However, the module
 #              can still be backed up by backupGT if listed explicitly on
 #              the command line with the '-s' option.
@@ -256,15 +256,15 @@ printFullUsage() {
     $ECHO "              delete monthly backups older than the most recent default number of monthly backups"
     $ECHO "              delete weekly  backups older than the most recent 4 weekly backups and"
     $ECHO "              delete daily   backups older than the most recent 5 daily  backups"
-    $ECHO "          eg. \"0,,4,5\" if backup completes without errors ..."
+    $ECHO "          eg. \"-1,,4,5\" if backup completes without errors ..."
     $ECHO "              same as previous example but yearly backups are not pruned"
     $ECHO "          eg. \"0,0,0,0,30\" if backup completes without errors ..."
-    $ECHO "              yearly,monthly,weekly, and daily backups will not be pruned and"
+    $ECHO "              no yearly,monthly,weekly, or daily backups will be kept and"
     $ECHO "              delete extra backups older than the most recent 30 extra backups"
     $ECHO "   -j   Only retrieve the module list and echo it modListPath. If modListPath is not supplied"
     $ECHO "        then the retrieved list is output to stdout.  This is used when this script"
     $ECHO "        is being invoked by the backupGT job control system. The output module list will be"
-    $ECHO "        subsequently be used by the job control system to retry the backup of each module"
+    $ECHO "        subsequently used by the job control system to attempt the backup of each module"
     $ECHO "        at regular intervals until it succeeds."
     $ECHO "   -v   Print verbose output"
     $ECHO "   -D   Print debugging output"
@@ -289,8 +289,6 @@ printFullUsage() {
 
 
 global_vars () {  #those that need to be reset for each module
-    SRC_NAME= 
-    TANSPORT=
     DEBUG=
 
     local date=`$DATE_CMD | $CUT -d '-' -f 1`
@@ -302,12 +300,6 @@ global_vars () {  #those that need to be reset for each module
 
 parseOptions() {
     global_vars
-    RETENSION_TYPE=
-    RETAIN_YEARLY=` $ECHO $RETENSION | $CUT -d ',' -f 1`
-    RETAIN_MONTHLY=`$ECHO $RETENSION | $CUT -d ',' -f 2`
-    RETAIN_WEEKLY=` $ECHO $RETENSION | $CUT -d ',' -f 3`
-    RETAIN_DAILY=`  $ECHO $RETENSION | $CUT -d ',' -f 4`
-    RETAIN_EXTRA=`  $ECHO $RETENSION | $CUT -d ',' -f 5`
 
     while getopts ":h:t:s:ymwdxp:j:vD" arg; do
         case $arg in
@@ -345,19 +337,7 @@ parseOptions() {
                 ;;
     
             p)
-                local val
-                local pos
-                for pos in `$SEQ 5`; do
-                                    val=`$ECHO ${OPTARG}  | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
-                    [ ! "$val" ] && val=`$ECHO $RETENSION | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
-                    case $pos in
-                        1) RETAIN_YEARLY=$val ;;
-                        2) RETAIN_MONTHLY=$val ;;
-                        3) RETAIN_WEEKLY=$val ;;
-                        4) RETAIN_DAILY=$val ;;
-                        5) RETAIN_EXTRA=$val ;;
-                    esac
-                 done
+                CMDLINE_RETAIN_SPEC=$"{OPTARG}"
                 ;;
 
             j)
@@ -428,19 +408,10 @@ parseOptions() {
             RETENSION_TYPE='D'
         fi
     fi
-    case $RETENSION_TYPE in
-        Y) RETENSION_AMT=${RETAIN_YEARLY}  ;;
-        M) RETENSION_AMT=${RETAIN_MONTHLY} ;;
-        W) RETENSION_AMT=${RETAIN_WEEKLY}  ;;
-        D) RETENSION_AMT=${RETAIN_DAILY}   ;;
-        X) RETENSION_AMT=${RETAIN_EXTRA}   ;;
-    esac
  
     if [ "$DEBUG" ]; then
         $PRINTF 'debug: SRC_NAME       = "%s"\n' $SRC_NAME        1>&2
         $PRINTF 'debug: MODULE         = "%s"\n' $MODULE          1>&2
-        $PRINTF 'debug: RETENSION_TYPE = "%s"\n' $RETENSION_TYPE  1>&2
-        $PRINTF 'debug: RETENSION_AMT  = "%s"\n' $RETENSION_TYPE  1>&2
     fi
 
     COMMAND_LINE_PARMS=( "${@:$OPTIND}" )  #save rest of command line as array
@@ -474,6 +445,39 @@ getModuleList () {
     return $rc  #only accessible to caller if output redirected to (tmp)file
 }
 
+resolveRetension () {
+    local val
+    local pos
+    local targetRetainSpec="$1"
+
+    # determine the retain amounts for each period type
+    for pos in 1 2 3 4 5; do
+                        val=`$ECHO $targetRetainSpec    | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
+        [ ! "$val" ] && val=`$ECHO $CMDLINE_RETAIN_SPEC | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
+        [ ! "$val" ] && val=`$ECHO $RETENSION           | $CUT -d ',' -f $pos | $SED -e 's/[ \t]//g'`
+        case $pos in
+            1) RETAIN_YEARLY=$val  ;;
+            2) RETAIN_MONTHLY=$val ;;
+            3) RETAIN_WEEKLY=$val  ;;
+            4) RETAIN_DAILY=$val   ;;
+            5) RETAIN_EXTRA=$val   ;;
+        esac
+    done
+
+    # set the retain amount for the current period type
+    case $RETENSION_TYPE in
+        Y) RETENSION_AMT=${RETAIN_YEARLY}  ;;
+        M) RETENSION_AMT=${RETAIN_MONTHLY} ;;
+        W) RETENSION_AMT=${RETAIN_WEEKLY}  ;;
+        D) RETENSION_AMT=${RETAIN_DAILY}   ;;
+        X) RETENSION_AMT=${RETAIN_EXTRA}   ;;
+    esac
+
+    if [ "$DEBUG" ]; then
+        $PRINTF 'debug: RETENSION_TYPE = "%s"\n' $RETENSION_TYPE  1>&2
+        $PRINTF 'debug: RETENSION_AMT  = "%s"\n' $RETENSION_AMT   1>&2
+    fi
+}
 
 ###############################################################################
 # backup modules (all or 1) for a particular host
@@ -494,7 +498,7 @@ doList () {
     if [ $rc -ne 0 ]; then
         $ECHO "    ERROR: failed to retrieve module list"
         $ECHO "        check communication with target host"
-        [ "$MODULE" ] && $ECHO "        and that it has a module named \"$MODULE\""
+        [ "$MODULE" ] && $ECHO "        and confirm that it has a module named \"$MODULE\""
         $RM -f "$modListPath"
         return $rc
     fi
@@ -568,13 +572,17 @@ doList () {
 ###############################################################################
 doModule () {
     local modComment="$@"
-    local method=`$ECHO $modComment | parseAssignment method`
+    local method=`          $ECHO $modComment | parseAssignment method`
+    local targetRetainSpec=`$ECHO $modComment | parseAssignment prune`
     local rc
  
-    # append required module options to modComment
-    modComment="`$ECHO $modComment | makeAssignment retainType $RETENSION_TYPE`"
-    modComment="`$ECHO $modComment | makeAssignment retainAmt  $RETENSION_AMT`"
+    resolveRetension "$targetRetainSpec"
 
+    if [ "$RETENSION_AMT" -eq "0" ]; then
+        [ "$DEBUG" ] && $ECHO 'debug: RETENSION_AMT is zero - module backup skipped succesfully' 1>&2
+        return 0
+    fi
+    
     case "$method" in 
         rsync|tar)
             doModule_file "$modComment"
@@ -597,9 +605,9 @@ doModule_file () {
 
     # if we are providing secondary backup services to a primary then the modComment
     # will have the origHost, origMod, and origName set
-    local origHost=`      $ECHO $modComment | parseAssignment "origHost"`
-    local origMod=`       $ECHO $modComment | parseAssignment "origMod"`
-    local origName=`      $ECHO $modComment | parseAssignment "origName"`
+    local origHost=`      $ECHO $modComment | parseAssignment origHost`
+    local origMod=`       $ECHO $modComment | parseAssignment origMod`
+    local origName=`      $ECHO $modComment | parseAssignment origName`
 
     local useHost=${origHost:-$SRC_NAME}
     local useMod=${origMod:-$MODULE}
@@ -609,7 +617,7 @@ doModule_file () {
     local hostDir=${STORAGE_ROOT}/${useHost}
     local modDir=${hostDir}/${useMod}
     local baseName=${modDir}/${useMod}
-    local targetKeySpec=`$ECHO $modComment | parseAssignment "key"`
+    local targetKeySpec=`$ECHO $modComment | parseAssignment key`
     [ -n "$targetKeySpec" ] && targetKeySpec=$(( targetKeySpec + 0 )) #convert to integer
 
     [ "$DEBUG" ] && $PRINTF 'debug: hostDir  = "%s"\n' $hostDir         1>&2
@@ -1081,8 +1089,8 @@ pruneOldBackups() {
     local modDir="$1"
     local modDS="$2"
 
-    # don't prune unless RETENSION_AMT defined and non-zero
-    [ ! "$RETENSION_AMT" -gt 0 ] && return
+    # skip pruning if RETENSION_AMT is -1
+    [ "$RETENSION_AMT" -eq "-1" ] && return
 
     $ECHO "pruning started for $SRC_NAME/$MODULE at `$DATE_CMD`"
     elapsedStart=`$ELAPSED_CMD`
