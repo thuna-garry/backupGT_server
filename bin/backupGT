@@ -233,7 +233,7 @@ printFullUsage() {
     $ECHO "          'rsync'          native rsync (when an rsync server can be contacted directly)"
     $ECHO "          'ssh'            over ssh transport"
     $ECHO "        either transport type can have the literal ':tunnel' appended to indicate that an"
-    $ECHO "        ssh port forwarded tunnel should be set up the the tansport layered in this tunnel"
+    $ECHO "        ssh port forwarded tunnel should be set up and the tansport layered in this tunnel"
     $ECHO "   -s   The module that should be backed up.  Defaults to all modules if omitted."
     $ECHO "   -y   Mark the backup as yearly"
     $ECHO "   -m   Mark the backup as monthly"
