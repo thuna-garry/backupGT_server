@@ -81,15 +81,15 @@ convert_dir2dataset () {
     zfs inherit -r backupgt:is_backup ${parentDir#/}
     zfs inherit -r backupgt:method    ${parentDir#/}
 
-    zfs create ${dir#/}2
-    mv -v ${dir}/* ${dir#/}2
-    #tar -C ${dir} -cf - . | tar -C ${dir}2 -xvf -
+    mv -v ${dir} ${dir}_orig
+    zfs create ${dir#/}
+    mv -v ${dir}_orig/* ${dir}
+    #tar -C ${dir}_orig -cf - . | tar -C ${dir} -xvf -
 
     # remove the original mount point
-    rmdir ${dir}
+    rmdir ${dir}_orig
 
-    # move the temporary into place 
-    zfs rename ${dir#/}2 ${dir#/}
+    # mark the dataset
     zfs set backupgt:is_backup=yes ${dir#/}
     zfs set backupgt:method=rsync  ${dir#/}
 }
