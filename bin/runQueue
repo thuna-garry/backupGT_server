@@ -255,10 +255,11 @@ else
 fi
 
 if [ "$utcWindowOkay" -eq 0 ]; then
-    {
-         $ECHO ${timeStamp}: ${jobDir}/${jobFile} -s "$modName" cancelled. \
+    [ "$VERBOSE" ] && ${jobDir}/${jobFile} -s "$modName" cancelled. \
              Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}"
-    } >> ${logPath} 2>&1
+    $ECHO ${timeStamp}: ${jobDir}/${jobFile} -s "$modName" cancelled. \
+        Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}" \
+        >> ${logPath} 2>&1
 
 else #run it
     {
