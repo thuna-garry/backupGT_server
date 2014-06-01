@@ -76,6 +76,14 @@
 #              prefix removed.  This is necessary because the target host and
 #              backup server may have different STORAGE_DSs (both in name and
 #              depth) and they are not (nor need to be) known to each other.
+#              
+#   origSrc    scope: zfs,zfs.rsync    suppliedBy: targetHost (optional: default "no")
+#              When the relDS originates on the target (ie the dataset on the
+#              target is NOT a backup of some other target's dataset/module)
+#              then this parameter should be set to "yes" so that the backup
+#              server can prefix the backup storage with the server's name (this
+#              distinguishes the module/dataset from datasets on other targets
+#              which have the same relDS.
 #
 #   origHost   scope: rsync,tar   suppliedBy: targetHost (optional)
 #              values: a valid (DNS) host name 
@@ -596,6 +604,7 @@ doModule () {
     return $rc
 }
 
+
 doModule_file () {
     local modComment="$@"
     local method=`$ECHO $modComment | parseAssignment method`
@@ -665,7 +674,7 @@ doModule_file () {
     fi
 
     # if the modDir is supposed to be a zfs dataset (it may not originally have been)
-    # see if it is a dataset, and if so does it needs to have the user properties
+    # see if it is a dataset, and if so does it need to have the user properties
     # reset (due to target changing the method)
     if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
         if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
@@ -912,6 +921,7 @@ doModule_file () {
     return $rcReturn
 }
 
+
 doModule_zfs () {
     local modComment="$@"
     local rc
@@ -935,15 +945,23 @@ doModule_zfs () {
     return ${PIPESTATUS[0]}
 }
 
+
 doModule_zfs2 () {
     local modComment="$@"
     local method=` $ECHO $modComment | parseAssignment method`
     local relDS=`  $ECHO $modComment | parseAssignment relDS`
+    local origSrc=`$ECHO $modComment | parseAssignment origSrc`
 
-    local modDS=${STORAGE_DS}/${relDS}
     local timeStamp=`$DATE_CMD`
     local elapsedStart=`$ELAPSED_CMD`
     local workDir=${TMP_DIR}
+
+    local modDS
+    if [ "$origSrc" = "true" ]; then
+        modDS=${STORAGE_DS}/${SRC_NAME}/${relDS}
+    else
+        modDS=${STORAGE_DS}/${relDS}
+    fi
 
     local logDir="${LOG_ROOT}/${SRC_NAME}"
     local workLog="${logDir}/${MODULE}.log"
