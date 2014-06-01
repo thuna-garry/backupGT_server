@@ -337,7 +337,7 @@ parseOptions() {
                 ;;
     
             p)
-                CMDLINE_RETAIN_SPEC=$"{OPTARG}"
+                CMDLINE_RETAIN_SPEC="${OPTARG}"
                 ;;
 
             j)
