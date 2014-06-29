@@ -38,6 +38,20 @@ TMP_DS_MAX_SIZE=2000G          #if set then a space limit will be set on the dat
 
 
 #----
+# The name of a (zero length) file that marks the backup as an archive.
+#   If present in a target or module directory (those one or two levels under
+#   under STORAGE_ROOT), then it indicates that this target or module is no
+#   longer being actively backed-up but that the contents should continue to be
+#   retained.  
+#
+#   This does not actually stop backups from occurring (those must be disabled
+#   via the job mechanism) but rather modifies the state/status displayed by
+#   showStatus to prevent overdue and failure alerts.
+#----
+ARCHIVE_TAG_FILE_NAME=_backupGT_archive
+
+
+#----
 # What user to assume when running priviledged commands
 #   if we don't want/need to use sudo for priveledge escalation then define
 #   but leave blank
