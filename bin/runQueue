@@ -220,7 +220,7 @@ fi
 #----------------
 # rename it to ensure that we have exclusive control of the entry
 #----------------
-mxqj="$queueDir/mx_${qrNum}_${firstQueuedJobPath##*/}"
+mxqj="$queueDir/mx_${qrNum}_`$DATE -u +${DATE_FORMAT}z`_${firstQueuedJobPath##*/}"
 $MV "$firstQueuedJobPath" "$mxqj" 2>/dev/null
 if [ ! -f "$mxqj" ]; then
     [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) competing queue runner took head; restarting"

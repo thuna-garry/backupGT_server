@@ -302,13 +302,16 @@ queueStatus () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
     $ECHO "Running Jobs"
+    now=`$DATE -u +${DATE_FORMAT}`
     for f in `ls $QUEUE_ROOT | grep ^mx_` ; do
-       $ECHO "    $f"
+        started=`$ECHO $f | awk -F_ '{print $3}'`
+        runTime=`dateDiffFmt $now $started`
+        $ECHO "    $runTime $f"
     done
 
     $ECHO "Queued Jobs"
     for f in `ls $QUEUE_ROOT | grep ^qj_` ; do
-       $ECHO "    $f"
+        $ECHO "    $f"
     done
 
     [ "$SCRIPTED_MODE" ] || $ECHO

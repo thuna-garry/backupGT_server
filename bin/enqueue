@@ -16,7 +16,7 @@
 #   Single directory with a file for each enqueued job.
 #
 # Queued jobs
-#   Are files with names of the form "qj_pp-timestamp_desc_crc32", where
+#   Are files with names of the form "qj_pp_timestamp_desc_crc32", where
 #     qj:        literal 'qj' (abbr "queued job")
 #     pp:        priority represented by a two digit integer (00=highest)
 #     timestamp: the local dateTime YYYY.MM.DD-HHMMSS when the job was queued
@@ -169,7 +169,7 @@ crc=`$CKSUM $tmpPath | $SED -e 's/^\([[:alnum:]]*\).*/\1/'`
 isDup=`$FIND $QUEUE_ROOT -type f -name '*qj_*_'$crc`
 if [ -z "$isDup" ]; then
     timeStamp=`$DATE -u +${DATE_FORMAT}z`
-    qjPath=$QUEUE_ROOT/qj_${priority}-${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
+    qjPath=$QUEUE_ROOT/qj_${priority}_${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
     $MV $tmpPath $qjPath
     [ "$VERBOSE" ] && $ECHO "            ENQUEUED as: $qjPath"
 else
