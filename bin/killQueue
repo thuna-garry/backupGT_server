@@ -1,0 +1,12 @@
+#!/usr/local/bin/bash
+
+getcpid() {
+    echo $1
+    cpids=`pgrep -P $1|xargs`
+    for cpid in $cpids; do
+        getcpid $cpid
+    done
+}
+
+runQueuepID=`ps auxwww | grep "runQueue $1" | grep -v grep | awk '{print $2}'`
+getcpid $runQueuepID | xargs kill -9
