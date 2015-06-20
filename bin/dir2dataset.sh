@@ -1,4 +1,4 @@
-#! /usr/local/bin/bash
+#! /usr/local/bin/bash 
 
 ###############################################################################
 # This script searches for module directories on a zfs datastore that are
@@ -32,8 +32,6 @@ printFullUsage() {
     $ECHO "# Author: Garry Thuna"
     $ECHO "# Created: 2014-03-01"
     $ECHO "# Last modified: ${LAST_MODIFIED_DATE}"
-    $ECHO "###############################################################################"
-    printMiniUsage
     $ECHO "  This script searches for module directories on a zfs datastore that are"
     $ECHO "  simply directories and not zfs datasets, and then converts each to a dataset"
     $ECHO 
@@ -43,7 +41,6 @@ printFullUsage() {
 
 
 parseOptions() {
-    local opSsupplied
     while getopts ":d" arg; do
         case $arg in
             d) DRYRUN=1
@@ -62,36 +59,50 @@ parseOptions() {
 ###############################################################################
 # 
 ###############################################################################
+get_dataset () {
+    local dir=$1
+    zfs list -H -o mountpoint,name | grep $dir[^/] | awk '{print $2}'
+}
+
+
 convert_dir2dataset () {
     local dir=$1
     local parentDir=${1%/*}
 
-    #check that the parent is a zfs dataset
-    if ! (echo $MOUNT_POINTS | grep -w -q $parentDir); then
-        echo "Error: $dir cannot be converted as parent dir is not a zfs dataset"
-        return
-    fi
-
     if [ -n "$DRYRUN" ]; then
-        echo "dryrun"
+        echo "dryrun: convert $dir"
         return
     fi
 
-    # a parentDir should not be marked with the custom properties
-    zfs inherit -r backupgt:is_backup ${parentDir#/}
-    zfs inherit -r backupgt:method    ${parentDir#/}
+    echo =======================================================================
+    echo = converting $dir
+    echo =======================================================================
 
+    #check that the parent is a zfs dataset
+    local parentDS=`get_dataset $parentDir`
+    if [ -z "$parentDS"]; then
+        echo "Error: $dir cannot be converted as parent dir is not a zfs dataset"
+        echo; echo;
+        return
+    fi
+
+    # ensure that a parent dataset is not marked with the custom properties
+    zfs inherit -r backupgt:is_backup $parentDS
+    zfs inherit -r backupgt:method    $parentDS
+
+    local ds=${parentDS}/${dir##*/}
     mv -v ${dir} ${dir}_orig
-    zfs create ${dir#/}
+    zfs create $ds 
     mv -v ${dir}_orig/* ${dir}
-    #tar -C ${dir}_orig -cf - . | tar -C ${dir} -xvf -
 
-    # remove the original mount point
+    # remove the original dir
     rmdir ${dir}_orig
 
     # mark the dataset
-    zfs set backupgt:is_backup=yes ${dir#/}
-    zfs set backupgt:method=rsync  ${dir#/}
+    zfs set backupgt:is_backup=yes $ds
+    zfs set backupgt:method=rsync  $ds
+
+    echo; echo;
 }
 
 
@@ -100,16 +111,10 @@ convert_dir2dataset () {
 ###############################################################################
 parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
-MOUNT_POINTS=`zfs list -o mountpoint`
 find $STORAGE_ROOT -type d -maxdepth 2 | sort | while read dir; do
-    if ! echo $MOUNT_POINTS | grep -w -q $dir; then
+    if ! zfs list -H -o mountpoint,name | grep -q ${dir}[^/]; then
         #dir is a normal directory which should be a zfs dataset
-        echo ==========================================================================
-        echo = converting $dir
-        echo ==========================================================================
         convert_dir2dataset $dir
-        echo; echo;
     fi
 done
-
 
