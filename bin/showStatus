@@ -21,7 +21,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012.10.14'
+LAST_MODIFIED_DATE='2015.09.24'
 
 NOW_DATE=`$DATE -u +${DATE_FORMAT}`
 SEPARATOR_LINE=`$PRINTF "%78s\n" ' ' | $SED -e 's/ /=/g'`
@@ -52,6 +52,7 @@ printFullUsage() {
     $ECHO "  -H    scripted mode do not display any headers, footers or other decoration"
     $ECHO "  -f <file>  write output to file instead of standard output (if file is not"
     $ECHO "             specified then STORAGE_ROOT/status will be used)"
+    $ECHO "  -s subject include leading subject line for use in mailers"
     $ECHO 
     $ECHO "If neither -j, -t, -q, or -u is specified all are assumed"
     $ECHO 
@@ -79,8 +80,9 @@ SHOW_HOST_STATUS=
 SHOW_QUEUE_STATUS=
 SHOW_SPACE_UTIL=
 SCRIPTED_MODE=
+SUBJECT=
 parseOptions() {
-    while getopts ":h:jtquf:H" arg; do
+    while getopts ":h:jtquf:Hs:" arg; do
         case $arg in
             h) TARGET_HOST=${OPTARG};;
             j) SHOW_JOB_STATUS=1  ;	SHOW_ALL= ;;
@@ -88,7 +90,8 @@ parseOptions() {
             q) SHOW_QUEUE_STATUS=1 ;	SHOW_ALL= ;;
             u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
             f) exec > ${OPTARG};;
-            H) SCRIPTED_MODE=1  ;	SHOW_ALL= ;;
+            H) SCRIPTED_MODE=1 ;;
+            s) SUBJECT="${OPTARG}";;
             :) if [ "${OPTARG}" == 'f' ]; then
                    exec > ${STORAGE_ROOT}/status
                else
@@ -174,6 +177,11 @@ isQueued () {
 ###############################################################################
 # status reporting routines
 ###############################################################################
+subject () {
+    $ECHO -e "Subject: $SUBJECT\n"
+}
+
+
 jobControlStatus () {
     local jobPath
     local jobName
@@ -384,6 +392,7 @@ parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
 case ${0##*/} in      #see how we are called
     showStatus)
+        [ "$SUBJECT" ]  && subject $*
         [ "$SHOW_ALL" -o "$SHOW_JOB_STATUS"  ]  && jobControlStatus $*
         [ "$SHOW_ALL" -o "$SHOW_HOST_STATUS" ]  && targetHostStatus $*
         [ "$SHOW_ALL" -o "$SHOW_QUEUE_STATUS" ] && queueStatus $*
