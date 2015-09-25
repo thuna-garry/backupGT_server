@@ -65,8 +65,9 @@ printFullUsage() {
     $ECHO "   -m <module>"
     $ECHO "        Specifies which module status to modify. If the module is given as '*' or"
     $ECHO "        '%' then the JOB_MODLIST_STATUS module will be modified."
-    $ECHO "   -M   Apply status to all jobFiles if -m option not also specified."
-    $ECHO "   -s   The literal status to set. Cannot be used with -u."
+    $ECHO "   -M   Apply status to all modules if -m option not also specified."
+    $ECHO "   -s [SUCCESS|FAILURE|RESET|SUSPEND]"
+    $ECHO "        The literal status to set. Cannot be used with -u."
     $ECHO "   -u   'Un-SUSPEND' previously suspended jobFile. Cannot be used with -s."
     $ECHO "   -v   Provide verbose output"
 }

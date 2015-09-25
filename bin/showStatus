@@ -228,6 +228,7 @@ jobControlStatus () {
             age=`dateDiffFmt "$runDate" "$NOW_DATE"`
             $PRINTF "    %-40s %s %s %s %s\n" "$modStatFile" "$isSuspect" "$runState" "$runDate" "$age"
         done
+        $PRINTF " \n"
     done
     [ "$SCRIPTED_MODE" ] || $ECHO
     [ "$SCRIPTED_MODE" ] || $ECHO
