@@ -207,7 +207,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012.06.20'
+LAST_MODIFIED_DATE='2016.01.06'
 
 DATE_CMD="$DATE -u +${DATE_FORMAT}z"
 ELAPSED_CMD="$DATE +%s"
@@ -215,7 +215,6 @@ ELAPSED_CMD="$DATE +%s"
 unset SSH_AUTH_SOCK       #prevent ssh agent forwarding
 
 STORAGE_IS_ZFS=`$ZFS get -H -o value type $STORAGE_DS 2>/dev/null`
-
 
 
 ###############################################################################
@@ -269,7 +268,7 @@ printFullUsage() {
     $ECHO "          eg. \"0,0,0,0,30\" if backup completes without errors ..."
     $ECHO "              no yearly,monthly,weekly, or daily backups will be kept and"
     $ECHO "              delete extra backups older than the most recent 30 extra backups"
-    $ECHO "   -j   Only retrieve the module list and echo it modListPath. If modListPath is not supplied"
+    $ECHO "   -j   Only retrieve the module list and echo it to modListPath. If modListPath is not supplied"
     $ECHO "        then the retrieved list is output to stdout.  This is used when this script"
     $ECHO "        is being invoked by the backupGT job control system. The output module list will be"
     $ECHO "        subsequently used by the job control system to attempt the backup of each module"
@@ -277,7 +276,7 @@ printFullUsage() {
     $ECHO "   -v   Print verbose output"
     $ECHO "   -D   Print debugging output"
     $ECHO
-    $ECHO "   If none of -y, -m, -w, -d, or -x are specified -d then"
+    $ECHO "   If none of -y, -m, -w, -d, or -x are specified then"
     $ECHO "       if it's Dec 31st then -y is assumed"
     $ECHO "       else if its the last day of the month then -m is assumed"
     $ECHO "       else if its Saturday then -w is assumed"
@@ -452,6 +451,7 @@ getModuleList () {
     [ "$TUNNEL" ] && tunnel_destroy
     return $rc  #only accessible to caller if output redirected to (tmp)file
 }
+
 
 resolveRetension () {
     local val
@@ -634,7 +634,16 @@ doModule_file () {
     [ "$DEBUG" ] && $PRINTF 'debug: baseName = "%s"\n' $baseName        1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: keySpec  = "%s"\n' $targetKeySpec   1>&2
 
-    # define the new and working dir 
+    local modDS=$STORAGE_DS/$useHost/$useMod  #when using zfs this will be handy
+
+    if [ "$STORAGE_IS_ZFS" -a "$method" = "rsync" ]; then
+        local usingRsyncLinkDest=""
+        local usingRsyncInplce="true"
+    else
+        local usingRsyncLinkDest="true"
+        local usingRsyncInplce=""
+    fi
+    
     local newDir=${baseName}_${timeStamp}_${RETENSION_TYPE}
     if [ -n "$origName" ]; then
         newDir=${modDir}/${origName}
@@ -647,8 +656,6 @@ doModule_file () {
     local workLog=${workDir}.log
     [ "$DEBUG" ] && $PRINTF 'debug: workDir  = "%s"\n' $workDir  1>&2
     [ "$DEBUG" ] && $PRINTF 'debug: workLog  = "%s"\n' $workLog  1>&2
-
-    local modDS=$STORAGE_DS/$useHost/$useMod  #when using zfs this will be handy
 
     if [ -d "$modDir" ]; then    
         if [ -d "$newDir" ]; then
@@ -663,7 +670,7 @@ doModule_file () {
         fi
     else
         # create the modDir and set it properties
-        if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then
+        if [ "$STORAGE_IS_ZFS" ]; then
             $SUDO $ZFS create -p                         $modDS
             $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
             $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
@@ -676,7 +683,7 @@ doModule_file () {
     # if the modDir is supposed to be a zfs dataset (it may not originally have been)
     # see if it is a dataset, and if so does it need to have the user properties
     # reset (due to target changing the method)
-    if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
+    if [ "$STORAGE_IS_ZFS" ]; then               
         if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
             if [ "`$ZFS get -H -o value ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
                 $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
@@ -687,17 +694,27 @@ doModule_file () {
         fi
     fi
 
-    # make sure that the workDir (WIP) exists
+    # find the most recent dir
+    local seedDir=`$LS -d ${baseName}_[0-9]*_[YMWDX] 2>/dev/null | $TAIL -1`
+
+    if [ "$seedDir" ]; then
+        if [ "$usingRsyncLinkDest" ]; then
+            [ "$DEBUG" ] && $PRINTF 'debug: seedDir  = "%s"\n' $seedDir  1>&2
+            RSYNC_OPTS="$RSYNC_OPTS  --link-dest=$seedDir"
+        else  # usingRsyncInplce
+            # move the seedDir to become our working dir (if it exists)
+            mv $seedDir $workDir
+            rm -f $seedDir.log
+            RSYNC_OPTS="$RSYNC_OPTS --inplace"
+        fi
+    fi
+
+    # make sure that the workDir and workLog exists
     $MKDIR -p -m 750 $workDir
     $ECHO -n "" >> $workLog
 
-    # find the most recent dir, if this is the first time then create a seed directory
-    local seedDir=`$LS -d ${baseName}_[0-9]*_[YMWDX] 2>/dev/null | $TAIL -1`
-    if [ ! "$seedDir" ]; then
-        seedDir=${baseName}_00000000
-        $MKDIR -p ${seedDir}
-    fi
-    [ "$DEBUG" ] && $PRINTF 'debug: seedDir  = "%s"\n' $seedDir  1>&2
+    local modDS=$STORAGE_DS/$useHost/$useMod  #when using zfs this will be handy
+
 
     { $ECHO "=============================================================================="
       $ECHO "= Backup started for $SRC_NAME/$MODULE at $timeStamp"
@@ -710,27 +727,27 @@ doModule_file () {
     case $method.$TRANSPORT in 
         rsync.rsync)
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
-		$SUDO $RSYNC -a $RSYNC_OPTS  
-		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+                $SUDO $RSYNC -a $RSYNC_OPTS  
+		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    ${RSYNC_HOST}::${MODULE} ${workDir}/
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
 		$SUDO $RSYNC -a $RSYNC_OPTS  
-		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    ${RSYNC_HOST}::${MODULE} ${workDir}/
 		__CMD__
 
             if [ "$VERBOSE" ]; then
-                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
-                    ${RSYNC_HOST}::${MODULE} ${workDir}/                                                          \
+                $SUDO $RSYNC -a $RSYNC_OPTS                                                 \
+                    --partial  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    ${RSYNC_HOST}::${MODULE} ${workDir}/                                    \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[0]}
             else
-                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
-                    ${RSYNC_HOST}::${MODULE} ${workDir}/                                                          \
+                $SUDO $RSYNC -a $RSYNC_OPTS                                                 \
+                    --partial  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    ${RSYNC_HOST}::${MODULE} ${workDir}/                                    \
                     >> $workLog 2>&1
                 rcDetail=$?
             fi
@@ -745,28 +762,28 @@ doModule_file () {
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
 		$SUDO $RSYNC -a $RSYNC_OPTS  
-		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"  
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
 		$SUDO $RSYNC -a $RSYNC_OPTS  
-		    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids
+		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"  
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
             if [ "$VERBOSE" ]; then
                 $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    --partial  --stats  --delete --delete-during --progress  --numeric-ids                        \
                     -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"    \
                     ${SSH_HOST}::${MODULE} ${workDir}                                                             \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[0]}
             else
                 $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                    --partial  --link-dest=$seedDir  --stats  --delete --delete-during --progress  --numeric-ids  \
+                    --partial  --stats  --delete --delete-during --progress  --numeric-ids                        \
                     -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"    \
                     ${SSH_HOST}::${MODULE} ${workDir}                                                             \
                     >> $workLog 2>&1
@@ -809,9 +826,6 @@ doModule_file () {
             ;;
     esac
 
-    #cleanup any temporary seed directory
-    $SUDO $RM -rf ${baseName}_00000000
-
     local elapsedEnd=`$ELAPSED_CMD`
     local elapsedMin=$(( (elapsedEnd - elapsedStart) / 60 ))
     case ${method}.${rcDetail} in
@@ -831,31 +845,32 @@ doModule_file () {
             $MV ${workLog} ${newLog}
             #$CHMOD 750 ${newDir}
 
-            # setup convenient symlinks to the newly completed backup
-            $SUDO $RM -f         ${modDir}/current
-            $LN -s ${newDir##*/} ${modDir}/current
+            if [ "$usingRsyncLinkDest" ]; then
+                # setup convenient symlinks to the newly completed backup
+                $SUDO $RM -f         ${modDir}/current
+                $LN -s ${newDir##*/} ${modDir}/current
+            fi
 
             # generate status file
             case ${method} in
                 rsync)
                     {
-                        local tail99="`$TAIL -99 $newLog`"
-                        local stat_fileSent=`$ECHO "$tail99" \
+                        local stat_fileSent=`$TAIL -99 $newLog \
                                                | $GREP "Number of files transferred:" \
                                                | $AWK '{print $5}' `
-                        local stat_fileNum=`$ECHO "$tail99" \
+                        local stat_fileNum=`$TAIL -99 $newLog \
                                                | $GREP "Number of files:" \
                                                | $AWK '{print $4}' `
-                        local stat_sizeSent=`$ECHO "$tail99" \
+                        local stat_sizeSent=`$TAIL -99 $newLog \
                                                | $GREP "Total transferred file size:" \
                                                | $AWK '{print $5}' `
-                        local stat_sizeTot=`$ECHO "$tail99" \
+                        local stat_sizeTot=`$TAIL -99 $newLog \
                                                | $GREP "Total file size:" \
                                                | $AWK '{print $4}' `
-                        local stat_listSize=`$ECHO "$tail99" \
+                        local stat_listSize=`$TAIL -99 $newLog \
                                                | $GREP "File list size:" \
                                                | $AWK '{print $4}' `
-                        local stat_listGenTime=`$ECHO "$tail99" \
+                        local stat_listGenTime=`$TAIL -99 $newLog \
                                                | $GREP "File list generation time:" \
                                                | $AWK '{print $5}' \
                                                | $CUT -d '.' -f 1 `
@@ -884,12 +899,10 @@ doModule_file () {
             esac
             rcReturn=0
 
-            # if our STORAGE_DS exists (ie our backup store is in fact ZFS), and we have individual
-            # datasets for each module, then make a snapshot of the module so that secondary backups 
-            # can use zfs send/receive efficiently
-            if [ "$STORAGE_IS_ZFS" -a "$CREATE_MOD_DIR_AS_ZFS_DS" = "yes" ]; then               
+            # if our STORAGE_DS exists (ie our backup store is in fact ZFS) make a snapshot
+            if [ "$STORAGE_IS_ZFS" ]; then               
                 $ECHO "creating snapshot ${modDS}@${timeStamp}_${RETENSION_TYPE}"
-                $SUDO $ZFS snapshot ${modDS}@${timeStamp}_${RETENSION_TYPE}
+                $SUDO $ZFS      snapshot ${modDS}@${timeStamp}_${RETENSION_TYPE}
             fi
 
             pruneOldBackups "$modDir" "$modDS" | $TEE -a $newLog
@@ -998,7 +1011,7 @@ doModule_zfs2 () {
     case $method in
         zfs)
             [ "$DEBUG" ] && $CAT <<-__CMD__
-		$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"
+		$SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"
 		    | $SUDO $ZFS receive -vuF "$modDS"
 		__CMD__
         
@@ -1028,7 +1041,7 @@ doModule_zfs2 () {
     case ${method}.${rc} in
         zfs.rsync.[1-9]* )
             $ECHO "=============================================================================="
-            $ECHO " transfer of snapshot export for moudle $MODULE failed at `$DATE_CMD`"
+            $ECHO " transfer of snapshot export for module $MODULE failed at `$DATE_CMD`"
             $ECHO "     return code = $rc"
             $ECHO "     description = `rsyncErrorCode $rc`"
             $ECHO "     duration = $elapsedMin minutes"
@@ -1037,7 +1050,7 @@ doModule_zfs2 () {
     
         zfs.rsync.0 )
             $ECHO "=============================================================================="
-            $ECHO " transfer of snapshot export for moudle $MODULE completed successfully at `$DATE_CMD`"
+            $ECHO " transfer of snapshot export for module $MODULE completed successfully at `$DATE_CMD`"
             $ECHO "     return code = $rc"
             $ECHO "     description = `rsyncErrorCode $rc`"
             $ECHO "     duration = $elapsedMin minutes"
