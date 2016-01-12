@@ -857,19 +857,24 @@ doModule_file () {
                     {
                         local stat_fileSent=`$TAIL -99 $newLog \
                                                | $GREP "Number of files transferred:" \
-                                               | $AWK '{print $5}' `
+                                               | $AWK '{print $5}' \
+                                               | $SED 's/,//g' `
                         local stat_fileNum=`$TAIL -99 $newLog \
                                                | $GREP "Number of files:" \
-                                               | $AWK '{print $4}' `
+                                               | $AWK '{print $4}' \
+                                               | $SED 's/,//g' `
                         local stat_sizeSent=`$TAIL -99 $newLog \
                                                | $GREP "Total transferred file size:" \
-                                               | $AWK '{print $5}' `
+                                               | $AWK '{print $5}' \
+                                               | $SED 's/,//g' `
                         local stat_sizeTot=`$TAIL -99 $newLog \
                                                | $GREP "Total file size:" \
-                                               | $AWK '{print $4}' `
+                                               | $AWK '{print $4}' \
+                                               | $SED 's/,//g' `
                         local stat_listSize=`$TAIL -99 $newLog \
                                                | $GREP "File list size:" \
-                                               | $AWK '{print $4}' `
+                                               | $AWK '{print $4}' \
+                                               | $SED 's/,//g' `
                         local stat_listGenTime=`$TAIL -99 $newLog \
                                                | $GREP "File list generation time:" \
                                                | $AWK '{print $5}' \
