@@ -1,0 +1,12 @@
+#! /bin/sh
+
+for j in `ls | grep -v '\.status$' | grep -v '\.modList$' | grep -v '$_job'`; do
+    if [ -x $j ]; then
+        echo
+        echo =============================================================
+        echo = $j
+        echo =============================================================
+        ./$j -j
+        echo
+    fi
+done
