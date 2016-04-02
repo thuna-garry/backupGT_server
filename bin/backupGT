@@ -1099,11 +1099,11 @@ doModule_zfs2 () {
 ###############################################################################
 tunnel_create () {
     trap tunnel_destroy 0 1 2 3 4 15
-    $ECHO -n "    creating tunnel... " 1>&2
+    $ECHO -n "    creating tunnel... "   1>&2
     [ "$DEBUG" ] && $ECHO                1>&2
     [ "$DEBUG" ] && $ECHO -n "        "  1>&2
-    [ "$DEBUG" ] && $ECHO $SSH $TUNNEL_OPTS $TUNNEL_HOST 1>&2
-                          $SSH $TUNNEL_OPTS $TUNNEL_HOST &
+    [ "$DEBUG" ] && $ECHO $SSH $TUNNEL_OPTS -o StrictHostKeyChecking=no $TUNNEL_HOST 1>&2
+                          $SSH $TUNNEL_OPTS -o StrictHostKeyChecking=no $TUNNEL_HOST &
     tunnelPid=$!
     $SLEEP 5
     $ECHO "    done" 1>&2
