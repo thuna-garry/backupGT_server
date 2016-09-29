@@ -1,12 +1,40 @@
 #!/usr/local/bin/bash
 
+
+###############################################################################
+# include user defined globals and the common library
+###############################################################################
+. ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
+
+# redefine $SUDO to include the configured user
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+fi
+
+
+###############################################################################
+# check parameters
+###############################################################################
+if [ $# = 0 ]; then
+    $ECHO "Kill a named (numbered) queueRunner and all its child processes."
+    $ECHO "Usage: $0 <queueRunner number>"
+    exit 1
+fi
+
+
+###############################################################################
+# main
+###############################################################################
 getcpid() {
-    echo $1
-    cpids=`pgrep -P $1|xargs`
+    $ECHO  $1
+    cpids=`pgrep -P $1|$XARGS`
     for cpid in $cpids; do
         getcpid $cpid
     done
 }
 
-runQueuepID=`ps auxwww | grep "runQueue $1" | grep -v grep | awk '{print $2}'`
-getcpid $runQueuepID | xargs kill -9
+runQueuepID=`$SUDO $PS auxwww | $GREP "runQueue $1" | $GREP -v grep | $AWK '{print $2}'`
+getcpid $runQueuepID | $XARGS $SUDO $KILL -9
+
+

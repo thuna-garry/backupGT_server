@@ -14,7 +14,6 @@
 . ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
-SUDO=""
 if [ -n "$SUDO_USER" ]; then
     SUDO="$SUDO -u $SUDO_USER"
 fi
@@ -255,7 +254,7 @@ else
 fi
 
 if [ "$utcWindowOkay" -eq 0 ]; then
-    [ "$VERBOSE" ] && ${jobDir}/${jobFile} -s "$modName" cancelled. \
+    [ "$VERBOSE" ] && $ECHO ${jobDir}/${jobFile} -s "$modName" cancelled. \
              Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}"
     $ECHO ${timeStamp}: ${jobDir}/${jobFile} -s "$modName" cancelled. \
         Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}" \

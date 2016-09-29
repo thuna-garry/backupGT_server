@@ -198,7 +198,6 @@
 . ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
-SUDO=""
 if [ -n "$SUDO_USER" ]; then
     SUDO="$SUDO -u $SUDO_USER"
 fi
@@ -214,7 +213,8 @@ ELAPSED_CMD="$DATE +%s"
 
 unset SSH_AUTH_SOCK       #prevent ssh agent forwarding
 
-STORAGE_IS_ZFS=`$ZFS get -H -o value type $STORAGE_DS 2>/dev/null`
+echo STORAGE_IS_ZFS="$SUDO $ZFS get -H -o value type $STORAGE_DS 2>/dev/null"
+echo storageIsZfs = $STORAGE_IS_ZFS 
 
 
 ###############################################################################
@@ -684,11 +684,11 @@ doModule_file () {
     # see if it is a dataset, and if so does it need to have the user properties
     # reset (due to target changing the method)
     if [ "$STORAGE_IS_ZFS" ]; then               
-        if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
-            if [ "`$ZFS get -H -o value ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
+        if [ "`$SUDO $ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
+            if [ "`$SUDO $ZFS get -H -o value ${ZFS_UPROP_IS_BACKUP} $modDS 2>/dev/null`" != "yes" ]; then
                 $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
             fi
-            if [ "`$ZFS get -H -o value ${ZFS_UPROP_METHOD} $modDS 2>/dev/null`" != "${method}" ]; then
+            if [ "`$SUDO $ZFS get -H -o value ${ZFS_UPROP_METHOD} $modDS 2>/dev/null`" != "${method}" ]; then
                 $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
             fi
         fi
@@ -713,9 +713,7 @@ doModule_file () {
     $MKDIR -p -m 750 $workDir
     $ECHO -n "" >> $workLog
 
-    local modDS=$STORAGE_DS/$useHost/$useMod  #when using zfs this will be handy
-
-
+    # finally we can start the actual backup copy
     { $ECHO "=============================================================================="
       $ECHO "= Backup started for $SRC_NAME/$MODULE at $timeStamp"
       $ECHO "=============================================================================="
@@ -945,14 +943,14 @@ doModule_zfs () {
     local rc
 
     # ensure that tmporary dataset exists
-    if [ -z "`$ZFS list -H -o name | grep $TMP_DS`" ] ; then
+    if [ -z "`$SUDO $ZFS list -H -o name | grep $TMP_DS`" ] ; then
         $SUDO $ZFS create -o quota=$TMP_DS_MAX_SIZE $TMP_DS
     else
         [ -n "$TMP_DS_MAX_SIZE" ] && \
-            [ `zfs get -H -o value quota $TMP_DS 2>/dev/null` == "none" ] && \
+            [ `SUDO $ZFS get -H -o value quota $TMP_DS 2>/dev/null` == "none" ] && \
             $SUDO $ZFS set quota=$TMP_DS_MAX_SIZE $TMP_DS
     fi
-    TMP_DIR="`$ZFS list -H -r -o mountpoint $TMP_DS`"
+    TMP_DIR="`$SUDO $ZFS list -H -r -o mountpoint $TMP_DS`"
     $SUDO $CHOWN $USER_NUM:$GROUP_NUM $TMP_DIR
 
     local logDir="${LOG_ROOT}/${SRC_NAME}"
@@ -998,15 +996,15 @@ doModule_zfs2 () {
     $ECHO "WIP log:      $workLog"
 
     # detmine the last snapshot and make sure the target modDS exists
-    if [ "`$ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
-        lastSnap=`$ZFS list -H -o name -t snapshot -d 1 -s name "$modDS" | $TAIL -1 | $CUT -d '@' -f 2`
+    if [ "`$SUDO $ZFS list -H -o name $modDS 2>/dev/null`" = "$modDS" ] ; then
+        lastSnap=`$SUDO $ZFS list -H -o name -t snapshot -d 1 -s name "$modDS" | $TAIL -1 | $CUT -d '@' -f 2`
         $ECHO lastSnap: $lastSnap
     else
         $ECHO -n "$modDS" does not exist on this system. Creating...
         $SUDO $ZFS create -p "$modDS"
         $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes "$modDS"
         $SUDO $ZFS set ${ZFS_UPROP_METHOD}=zfs    "$modDS"
-        $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$ZFS list -H -r -o mountpoint $modDS`
+        $SUDO $CHOWN $USER_NUM:$GROUP_NUM `$SUDO $ZFS list -H -r -o mountpoint $modDS`
         $ECHO    " done."
         lastSnap=""
     fi
@@ -1137,7 +1135,7 @@ pruneOldBackups() {
     # prune ZFS snapshots
     if [ "$STORAGE_IS_ZFS" ]; then
         local snapshot
-        for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null  \
+        for snapshot in `$SUDO $ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null  \
                          | $GREP _${RETENSION_TYPE}\$  \
                          | $SORT -r \
                          | $SED -e "1,${RETENSION_AMT}d"`; do
@@ -1166,7 +1164,7 @@ pruneOldBackups() {
 
     # remove any non-retained snapshots
     local snapshot
-    for snapshot in `$ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null \
+    for snapshot in `$SUDO $ZFS list -t snapshot -H -o name -r $modDS 2>/dev/null \
                      | $GREP -v '_[YMWDX]$'` ; do
         $ECHO "  pruning snapshot $snapshot"
         $NICE $SUDO $ZFS destroy $snapshot

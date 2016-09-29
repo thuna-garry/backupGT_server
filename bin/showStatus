@@ -12,7 +12,6 @@
 . ${0%/*}/common.lib
 
 # redefine $SUDO to include the configured user
-SUDO=""
 if [ -n "$SUDO_USER" ]; then
     SUDO="$SUDO -u $SUDO_USER"
 fi
