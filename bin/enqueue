@@ -30,6 +30,7 @@
 #     modName:  <modName>
 #     utcWindowStart: <utcWindowStart>
 #     utcWindowEnd:   <utcWindowEnd>
+#     netChannel:   <netChannel>
 #     jobParms: [all non-option command line parameters]
 #
 ###############################################################################
@@ -67,7 +68,7 @@ LAST_MODIFIED_DATE='2012.10.14'
 # process options
 ###############################################################################
 printMiniUsage() {
-    $ECHO "Usage: $0 -j <jobPath> -s <modName> [-p <priority>] [-v]"
+    $ECHO "Usage: $0 [-v] -j <jobPath> -s <modName> [-p <priority>] [-u <utcStart,stcEnd>] [-c <netChannel>]"
 }
 
 printFullUsage() {
@@ -79,30 +80,34 @@ printFullUsage() {
     $ECHO "###############################################################################"
     printMiniUsage
     $ECHO "Options:"
-    $ECHO "   -j <jobPath>   The canonical path to the executable job file.  If the jobPath"
-    $ECHO "                  does not begin with a '/' then it is assumed to be a path"
-    $ECHO "                  relative to JOB_ROOT ('$JOB_ROOT/'"
-    $ECHO "                  will be prepended)"
-    $ECHO "   -s <modName>   The module name to run the job for.  Athough this parameter"
-    $ECHO "                  must be supplied it can be an emply string to indicate that"
-    $ECHO "                  the job will be run to retrieve the module list from the"
-    $ECHO "                  target."
-    $ECHO "   -p <priority>  The priority as a two digit integer where 00 has the highest"
-    $ECHO "                  priority and 99 the lowest.  Default = 50"
-    $ECHO "   -u <start,end> The time window in which the job should be allowed to run:"
-    $ECHO "                  'start' and 'end' are of the form HHMMSS"
-    $ECHO "   -v             Print verbose output"
+    $ECHO "   -v               Print verbose output"
+    $ECHO "   -j <jobPath>     The canonical path to the executable job file.  If the jobPath"
+    $ECHO "                    does not begin with a '/' then it is assumed to be a path"
+    $ECHO "                    relative to JOB_ROOT ('$JOB_ROOT/'"
+    $ECHO "                    will be prepended)"
+    $ECHO "   -s <modName>     The module name to run the job for.  Athough this parameter"
+    $ECHO "                    must be supplied it can be an emply string to indicate that"
+    $ECHO "                    the job will be run to retrieve the module list from the"
+    $ECHO "                    target."
+    $ECHO "   -p <priority>    The priority as a two digit integer where 00 has the highest"
+    $ECHO "                    priority and 99 the lowest.  Default = 50"
+    $ECHO "   -u <start,end>   The UTC time window in which the job should be allowed to run:"
+    $ECHO "                    'start' and 'end' are of the form HHMMSS"
+    $ECHO "   -c <netChannel>  NetChannel is an simple string (no spaces or other characters"
+    $ECHO "                    unfriendly to shell command lines) that when specified delays"
+    $ECHO "                    starting a job with the same netChannel as a running job"
 }
 
 
 parseOptions() {
     local opSsupplied
-    while getopts ":j:s:p:u:v" arg; do
+    while getopts ":j:s:p:u:c:v" arg; do
         case $arg in
             j) jobPath="${OPTARG}" ;;
             s) modName="${OPTARG}";  sOptionSupplied="1" ;;
             p) priority="${OPTARG}" ;;
             u) utcWindow="${OPTARG}" ;;
+            c) netChannel="${OPTARG}" ;;
             v) VERBOSE="1" ;;
             :) printFullUsage 1>&2
                $ECHO "Option -${OPTARG} requires an argument." 1>&2
@@ -160,6 +165,7 @@ $ECHO jobFile:  $jobFile              >> $tmpPath
 $ECHO modName:  $modName              >> $tmpPath
 $ECHO utcWindowStart: $utcWindowStart >> $tmpPath
 $ECHO utcWindowEnd:   $utcWindowEnd   >> $tmpPath
+$ECHO netChannel: $netChannel         >> $tmpPath
 $ECHO jobParms: "$@"                  >> $tmpPath
 
 # check that the candidate file is not a duplicate of an

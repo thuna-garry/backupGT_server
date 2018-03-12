@@ -213,9 +213,6 @@ ELAPSED_CMD="$DATE +%s"
 
 unset SSH_AUTH_SOCK       #prevent ssh agent forwarding
 
-echo STORAGE_IS_ZFS="$SUDO $ZFS get -H -o value type $STORAGE_DS 2>/dev/null"
-echo storageIsZfs = $STORAGE_IS_ZFS 
-
 
 ###############################################################################
 # process options
@@ -355,6 +352,7 @@ parseOptions() {
             D)
                 # increase the debug level for each -D option specified
                 DEBUG=$(( DEBUG + 1 ))
+                VERBOSE=$(( VERBOSE + 1 ))
                 ;;
 
             v)
@@ -495,9 +493,9 @@ doList () {
 
     $ECHO 
     $ECHO 
-    $ECHO "Begin processing of $SRC_NAME"
-    $ECHO "    using transport type: $TRANSPORT" 
-    $ECHO "    retrieving module list"
+    [ "$VERBOSE" ] && $ECHO "Begin processing of $SRC_NAME"
+    [ "$VERBOSE" ] && $ECHO "    using transport type: $TRANSPORT" 
+    [ "$VERBOSE" ] && $ECHO "    retrieving module list"
 
     # create a temporary file in which to stash the list
     local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXXX`

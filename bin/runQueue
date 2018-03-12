@@ -64,7 +64,6 @@ printFullUsage() {
 
 
 parseOptions() {
-    local opSsupplied
     while getopts ":vD" arg; do
         case $arg in
             D) DEBUG=$(( DEBUG + 1 )) 
@@ -167,8 +166,9 @@ done
 
 
 #----------------
-# we have control so remove any hung/failed jobs that were being run
-# by a previous queueRunner with the same qrNum
+# we have control so ...
+#   remove any hung/failed jobs that were being run by a previous queueRunner with the same qrNum, and
+#   setup a trap to cleanup after ourself
 #----------------
 $RM -f $queueDir/mx_${qrNum}_*
 cleanup () {
@@ -187,80 +187,93 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 #     where there are multiple jobFiles which pull from the same target) we can prevent
 #     this by having each concurrent queueRunner based on a different jobFile.
 #----------------
-exclusionListPath=/tmp/${0##*/}.1.$$
-nonExcludedQueuedJobs=/tmp/${0##*/}.2.$$
+runningJobs=/tmp/${0##*/}.$$.runningJobs
+channelsInUse=/tmp/${0##*/}.$$.chennelsInUse
 
-$ECHO 'h' > $exclusionListPath
 for f in $queueDir/mx_*; do 
-    $AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f  2>/dev/null \
-        | $AWK '{  gsub(/\//, "\\/"); print "/"$0"/d" }'                       \
-        >> $exclusionListPath
+    $AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f  2>/dev/null  >> $runningJobs
+    $AWK '/^netChannel:/ {printf "%s", $2}'                    $f  2>/dev/null  >> $channelsInUse
 done
 
-$ECHO -n > $nonExcludedQueuedJobs
 for f in $queueDir/qj_*; do
-    $AWK '/^jobDir:/ {printf "%s %s/", FILENAME, $2} /^jobFile/ {print $2}' $f  2>/dev/null \
-        | $SED -f $exclusionListPath                                                        \
-        >> $nonExcludedQueuedJobs
+    # see if job already running
+    jobPath=`$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f`
+    if grep -q "$jobPath" $runningJobs; then
+        [ "$VERBOSE" ] && $ECHO "queue entry skipped: job already running:   ${f##*/}"
+        continue;
+    fi
+
+    # see if job needs a netChannel already in use (yes there is a race condition here but
+    #   low enough probability of collision not going to worry about it now
+    channel=`$AWK '/^netChannel:/ {printf "%s", $2}' $f`
+    if [ -n "$channel" ] && grep -q "$channel" $channelsInUse; then
+        [ "$VERBOSE" ] && $ECHO "queue entry skipped: netChannel in use:     ${f##*/}"
+        continue;
+    fi
+
+    # see if job is outside of UTC window
+    utcWindowStart=`$AWK '/^utcWindowStart:/ {printf "%s", 2}' $f`
+    utcWindowEnd=`  $AWK '/^utcWindowEnd:/   {printf "%s", 2}' $f`
+    nowTime=`$DATE -u +${TIME_FORMAT}`
+    utcWindowOkay=1
+    if [ "$utcWindowStart" -lt "$utcWindowEnd" ]; then
+        [ "$nowTime" -lt "$utcWindowStart" ] && utcWindowOkay=0
+        [ "$nowTime" -gt "$utcWindowEnd" ]   && utcWindowOkay=0
+    else
+        [ "$nowTime" -lt "$utcWindowStart" ] && \
+        [ "$nowTime" -ge "$utcWindowEnd" ]   && utcWindowOkay=0
+    fi
+    if [ "$utcWindowOkay" -eq 0 ]; then
+        [ "$VERBOSE" ] && $ECHO "queue entry skipped: outside of UTC window: ${f##*/}"
+        continue;
+    fi
+
+    # okay... found a runnable queue entry
+    runnableQueueEntry=$f
+    break
 done
-firstQueuedJobPath=`$AWK 'NR == 1 {print $1}' $nonExcludedQueuedJobs`
 
-rm -f $exclusionListPath
-rm -f $nonExcludedQueuedJobs
+rm -f $channelsInUse
+rm -f $runningJobs
 
-if [ -z "$firstQueuedJobPath" ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) queue is empty - exiting"
+if [ -z "$runnableQueueEntry" ]; then
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) no runnable queue entries - exiting"
     $RM -f $thisMutex
     exit 0
 fi
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) queue head is ${firstQueuedJobPath##*/}"
+[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) first runnable queue entry is ${runnableQueueEntry##*/}"
 
 
 #----------------
 # rename it to ensure that we have exclusive control of the entry
 #----------------
-mxqj="$queueDir/mx_${qrNum}_`$DATE -u +${DATE_FORMAT}z`_${firstQueuedJobPath##*/}"
-$MV "$firstQueuedJobPath" "$mxqj" 2>/dev/null
-if [ ! -f "$mxqj" ]; then
-    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) competing queue runner took head; restarting"
-    $RM -f $thisMutex
-    exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
+if [ ! "$DEBUG" ]; then
+    mxqj="$queueDir/mx_${qrNum}_`$DATE -u +${DATE_FORMAT}z`_${runnableQueueEntry##*/}"
+    $MV "$runnableQueueEntry" "$mxqj" 2>/dev/null
+    if [ ! -f "$mxqj" ]; then
+        [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) competing queue runner took head; restarting"
+        $RM -f $thisMutex
+        exec $0 `[ "$VERBOSE" ] && $ECHO "-v"` ${qrNum}
+    fi
+    [ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) has dequeued head as ${mxqj##*/}"
 fi
-[ "$VERBOSE" ] && $ECHO "queueRunner_$qrNum (pid=$$) has dequeued head as ${mxqj##*/}"
 
 
 #----------------
-# now we have a queued job lets consider running it
+# now we have a queued job lets run it
 #----------------
-jobDir=`        $SED -n -e '/^jobDir:/!d;         s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-jobFile=`       $SED -n -e '/^jobFile:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-modName=`       $SED -n -e '/^modName:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-utcWindowStart=`$SED -n -e '/^utcWindowStart:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-utcWindowEnd=`  $SED -n -e '/^utcWindowEnd:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
-jobParms=`      $SED -n -e '/^jobParms:/!d;       s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+if [ ! "$DEBUG" ]; then
+    jobDir=`        $SED -n -e '/^jobDir:/!d;         s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+    jobFile=`       $SED -n -e '/^jobFile:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+    modName=`       $SED -n -e '/^modName:/!d;        s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+    utcWindowStart=`$SED -n -e '/^utcWindowStart:/!d; s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+    utcWindowEnd=`  $SED -n -e '/^utcWindowEnd:/!d;   s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
+    jobParms=`      $SED -n -e '/^jobParms:/!d;       s/^[^[:blank:]]*[[:blank:]]*//p' "${mxqj}"`
 
-logDir="$LOG_ROOT/$jobFile"
-logPath="${logDir}/${modName:-$JOB_MODLIST_STATUS}.jobLog"
-mkdir -p "$logDir"
+    logDir="$LOG_ROOT/$jobFile"
+    logPath="${logDir}/${modName:-$JOB_MODLIST_STATUS}.jobLog"
+    mkdir -p "$logDir"
 
-nowTime=`$DATE -u +${TIME_FORMAT}`
-utcWindowOkay=1
-if [ "$utcWindowStart" -lt "$utcWindowEnd" ]; then
-    [ "$nowTime" -lt "$utcWindowStart" ] && utcWindowOkay=0
-    [ "$nowTime" -gt "$utcWindowEnd" ]   && utcWindowOkay=0
-else
-    [ "$nowTime" -lt "$utcWindowStart" ] && \
-    [ "$nowTime" -ge "$utcWindowEnd" ]   && utcWindowOkay=0
-fi
-
-if [ "$utcWindowOkay" -eq 0 ]; then
-    [ "$VERBOSE" ] && $ECHO ${jobDir}/${jobFile} -s "$modName" cancelled. \
-             Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}"
-    $ECHO ${timeStamp}: ${jobDir}/${jobFile} -s "$modName" cancelled. \
-        Time outside of requested window "(${utcWindowStart},${utcWindowEnd}}" \
-        >> ${logPath} 2>&1
-
-else #run it
     {
         if [ -z "$modName" ]; then
             [ -f ${jobDir}/$JOB_CONTROL ]                    && . ${jobDir}/$JOB_CONTROL

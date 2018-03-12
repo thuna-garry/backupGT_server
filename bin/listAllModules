@@ -1,12 +1,16 @@
 #! /bin/sh
 
-for j in `ls | grep -v '\.status$' | grep -v '\.modList$' | grep -v '$_job'`; do
-    if [ -x $j ]; then
-        echo
-        echo =============================================================
-        echo = $j
-        echo =============================================================
-        ./$j -j
-        echo
+for d in `find . -maxdepth 4 -type d`; do
+    if [ -e "$d/_jobControl" ]; then
+        for j in `ls $d | grep -v '\.status$' | grep -v '\.modList$' | grep -v '^_job'`; do
+            if [ -x $d/$j ]; then
+                echo
+                echo =============================================================
+                echo = $d/$j
+                echo =============================================================
+                $d/$j -j
+                echo
+            fi
+        done
     fi
 done

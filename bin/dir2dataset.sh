@@ -111,7 +111,7 @@ convert_dir2dataset () {
 ###############################################################################
 parseOptions "$@"; set -- "${COMMAND_LINE_PARMS[@]}"
 
-find $STORAGE_ROOT -type d -maxdepth 2 | sort | while read dir; do
+find $STORAGE_ROOT -maxdepth 2 -type d | sort | while read dir; do
     if ! zfs list -H -o mountpoint,name | grep -q ${dir}[^/]; then
         #dir is a normal directory which should be a zfs dataset
         convert_dir2dataset $dir

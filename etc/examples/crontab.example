@@ -8,6 +8,6 @@ PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 2-59/10 *       *       *       *       nice /usr/local/backupGT_server/bin/showStatus -f
 
 3       */4     *       *       *       (cd /usr/local/backupGT_server; git pull) > /dev/null 2>&1
-4       */4     *       *       *       (cd /root/incommingBackups;     git pull) > /dev/null 2>&1
+4       */4     *       *       *       (cd /root/incomingBackups;      git pull) > /dev/null 2>&1
 0       6       *       *       *       /usr/local/backupGT_server/bin/showStatus | mail -s "`hostname -s` Backup Status" is.backups@domain.com
 

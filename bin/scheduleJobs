@@ -29,6 +29,12 @@
 #   been previously queued and run.  After each run of the job a line will be
 #   appended with the job's completion status and some additional job control
 #   information.
+#
+#   These status files are examined by this script to determine whether a job
+#   should be enqueued or not.
+#
+#   Additionally these status files are used by the 'showStatus' command
+#   to when listing the m st recent succes, failure, and runtime of each job. 
 ###############################################################################
 
 
@@ -154,9 +160,9 @@ needToQueue () {
 callEnqueue () {
     local jobPath="$1"
     local modName="$2"
-    local utcWindowStart="${3:-000000}"
-    local utcWindowEnd="${4:-235959}"
-    shift 2
+    local utcWindowStart="$3"
+    local utcWindowEnd="$4"
+    shift 4
 
     ${BACKUPGT_ROOT}/bin/enqueue                  \
         `[ "$VERBOSE" ] && $ECHO "-v"`            \
@@ -164,6 +170,7 @@ callEnqueue () {
         "-s" "$modName"                           \
         "-p" "$JOB_PRIORITY"                      \
         "-u" "${utcWindowStart},${utcWindowEnd}"  \
+        "-c" "$JOB_NET_CHANNEL"  \
         "--" $*
     if [ $? -eq 100 ]; then
         [ "$VERBOSE" ] && $ECHO '          . attempted enqueue but job already queued'
@@ -188,15 +195,17 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         [ "$VERBOSE" ] && $ECHO "    job: $jobFile"
 
         # set default job control parameters and source the jobControl file
-        JOB_INTERVAL=1440      #set default 1 day
-        JOB_RETRY_INTERVAL=60  #set default 1 hour
-        JOB_PRIORITY=50        #set default medium
-        JOB_EXTRA_PARMS=""     #set default
+        JOB_INTERVAL=1440                      #set default 1 day                    used by needToQueue
+        JOB_RETRY_INTERVAL=60                  #set default 1 hour                   used by needToQueue
+        JOB_PRIORITY=50                        #set default medium                   used by callEnqueu
+        JOB_NET_CHANNEL=${jobDir#$JOB_ROOT/}   #set default subdir of the JOB_ROOT   used by callEnqueu
+        JOB_EXTRA_PARMS=""                     #set default                          passed to needToQueue
         . $jobControlFile
         [ -f "${jobPath}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}${JOB_CONTROL_SUFFIX}"
         saveJI="$JOB_INTERVAL"
         saveJR="$JOB_RETRY_INTERVAL"
         saveJP="$JOB_PRIORITY"
+        saveJC="$JOB_NET_CHANNEL"
         saveJX="$JOB_EXTRA_PARMS"
         
         #----------------
@@ -204,8 +213,8 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         #----------------
         if needToQueue "$jobPath" "$JOB_MODLIST_STATUS"; then
             callEnqueue "$jobPath" "" \
-                        "" "" \
-                        "${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS" 
+                        "000000" "235959" \
+                        ${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS 
             continue
         fi
 	recentModList="${jobPath}${JOB_MODLIST_SUFFIX}"
@@ -216,23 +225,25 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         $CAT $recentModList 2>/dev/null | while read modName modComment; do
             [ "$VERBOSE" ] && $ECHO '        mod: ' $modName
 
-            # set default job control parameters and source the mod specific jobControl file
+            # set default job control parameters then source the mod specific jobControl file
             JOB_INTERVAL=$saveJI
             JOB_RETRY_INTERVAL=$saveJR
             JOB_PRIORITY=$saveJP
+            JOB_NET_CHANNEL=$saveJC
             JOB_EXTRA_PARMS=$saveJX
             [ -f "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}.${modName}${JOB_CONTROL_SUFFIX}" 
-            [ "$VERBOSE" ] && $ECHO "               JOB_INTERVAL = " $JOB_INTERVAL
+            [ "$VERBOSE" ] && $ECHO "               JOB_INTERVAL       = " $JOB_INTERVAL
             [ "$VERBOSE" ] && $ECHO "               JOB_RETRY_INTERVAL = " $JOB_RETRY_INTERVAL
-            [ "$VERBOSE" ] && $ECHO "               JOB_PRIORITY = " $JOB_PRIORITY
-            [ "$VERBOSE" ] && $ECHO "               JOB_EXTRA_PARMS = " $JOB_EXTRA_PARMS
+            [ "$VERBOSE" ] && $ECHO "               JOB_PRIORITY       = " $JOB_PRIORITY
+            [ "$VERBOSE" ] && $ECHO "               JOB_NET_CHANNEL    = " $JOB_NET_CHANNEL
+            [ "$VERBOSE" ] && $ECHO "               JOB_EXTRA_PARMS    = " $JOB_EXTRA_PARMS
 
             if needToQueue "$jobPath" "$modName"; then
                 utcWindowStart=`$ECHO "$modComment" | parseAssignment utcWindowStart`
                 utcWindowEnd=`  $ECHO "$modComment" | parseAssignment utcWindowEnd`
                 callEnqueue "$jobPath" "$modName" \
-                            "$utcWindowStart" "$utcWindowEnd" \
-                            "$JOB_EXTRA_PARMS"
+                            "${utcWindowStart:-0000}" "${utcWindowEnd:-235959}" \
+                            ${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS 
             fi
         done
 

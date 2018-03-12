@@ -333,18 +333,15 @@ spaceUtilization () {
     [ "$SCRIPTED_MODE" ] || $ECHO "=	`hostname`	at `$DATE -u +${DATE_FORMAT}z`"
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 
-    case $SYSTEM_TYPE in
-        linux)
-            dfResult=`df -h ${STORAGE_ROOT} | $TAIL -1`
-            $ECHO "Space = `$ECHO ${dfResult} | $CUT -d ' ' -f 4` of `$ECHO ${dfResult} | $CUT -d ' ' -f 2`"
-            ;;
-        bsd)
-            $PRINTF "Space = %s of %s (cap: %s  dedup: %s)\n" `$ZPOOL list -Ho free  $ROOT_POOL` \
-                                                              `$ZPOOL list -Ho size  $ROOT_POOL` \
-                                                              `$ZPOOL list -Ho cap   $ROOT_POOL` \
-                                                              `$ZPOOL list -Ho dedup $ROOT_POOL`
-            ;;
-    esac
+    if [ "${STORAGE_IS_ZFS^^}" = "YES" ]; then
+        $PRINTF "Space = %s of %s (cap: %s  dedup: %s)\n" `$SUDO $ZPOOL list -Ho free  $ROOT_POOL` \
+                                                          `$SUDO $ZPOOL list -Ho size  $ROOT_POOL` \
+                                                          `$SUDO $ZPOOL list -Ho cap   $ROOT_POOL` \
+                                                          `$SUDO $ZPOOL list -Ho dedup $ROOT_POOL`
+    else
+        dfResult=`df -h ${STORAGE_ROOT} | $TAIL -1`
+        $ECHO "Space = `$ECHO ${dfResult} | $CUT -d ' ' -f 4` of `$ECHO ${dfResult} | $CUT -d ' ' -f 2`"
+    fi
     [ "$SCRIPTED_MODE" ] || $ECHO
     [ "$SCRIPTED_MODE" ] || $ECHO
 }

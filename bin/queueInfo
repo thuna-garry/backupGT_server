@@ -1,0 +1,39 @@
+#!/usr/local/bin/bash
+
+
+###############################################################################
+# include user defined globals and the common library
+###############################################################################
+. ${0%/*}/../etc/server.conf
+. ${0%/*}/common.lib
+
+# redefine $SUDO to include the configured user
+if [ -n "$SUDO_USER" ]; then
+    SUDO="$SUDO -u $SUDO_USER"
+fi
+
+
+###############################################################################
+# display info
+###############################################################################
+$ECHO "Active Queues"
+for f in $QUEUE_ROOT/mutex_*; do
+    pid=`cat $f`
+    prog=`ps -q $pid -o comm=`
+    if [ "$prog" = "runQueue" ]; then
+        alive=""
+    else
+        alive="dead"
+    fi
+    $PRINTF "    %6s %4s %s\n" $pid "$alive" ${f##$QUEUE_ROOT/}
+done
+
+echo "Running Jobs"
+for f in $QUEUE_ROOT/mx_*; do
+    jobPath=`$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f`
+    queue="${f#*mx_}"
+    queue="${queue%%_*}"
+    $PRINTF "    %2s %s\n" $queue ${jobPath##$JOB_ROOT/}
+done
+
+

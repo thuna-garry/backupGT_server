@@ -28,13 +28,15 @@ fi
 ###############################################################################
 getcpid() {
     $ECHO  $1
+    $ECHO  $1 1>&2
     cpids=`pgrep -P $1|$XARGS`
     for cpid in $cpids; do
         getcpid $cpid
     done
+    # alternative way to do this is
+    # pstree -p $pid | grep -o '([0-9]\+)' | grep -o '[0-9]\+'
 }
 
-runQueuepID=`$SUDO $PS auxwww | $GREP "runQueue $1" | $GREP -v grep | $AWK '{print $2}'`
-getcpid $runQueuepID | $XARGS $SUDO $KILL -9
-
+runQueuePid=`$SUDO $PS auxwww | $GREP "runQueue $1" | $GREP -v grep | $AWK '{print $2}'`
+getcpid $runQueuePid | $XARGS $SUDO $KILL -9
 

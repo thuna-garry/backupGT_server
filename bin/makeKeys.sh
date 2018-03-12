@@ -7,7 +7,7 @@
 
 HOME_DIR=${0%/*}/..
 SERVER_DESC=`hostname`
-TARGET_SCRIPT="/root/incommingBackups/backupGT.target"
+TARGET_SCRIPT="/root/incomingBackups/backupGT.target"
 
 
 #--------
