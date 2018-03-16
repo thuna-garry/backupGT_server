@@ -16,8 +16,8 @@ fi
 ###############################################################################
 # display info
 ###############################################################################
-$ECHO "Active Queues"
-for f in $QUEUE_ROOT/mutex_*; do
+$ECHO "Active Queues:"
+for f in `$LS $QUEUE_ROOT/mutex_* 2> /dev/null`; do
     pid=`cat $f`
     prog=`ps -q $pid -o comm=`
     if [ "$prog" = "runQueue" ]; then
@@ -28,12 +28,11 @@ for f in $QUEUE_ROOT/mutex_*; do
     $PRINTF "    %6s %4s %s\n" $pid "$alive" ${f##$QUEUE_ROOT/}
 done
 
-echo "Running Jobs"
-for f in $QUEUE_ROOT/mx_*; do
-    jobPath=`$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f`
+echo "Running Jobs:"
+for f in `$LS $QUEUE_ROOT/mx_* 2> /dev/null`; do
+    jobPath=`$AWK '/^jobPath:/ {printf "%s", $2}' $f`
+    modName=`$AWK '/^modName:/ {printf "%s", $2}' $f`
     queue="${f#*mx_}"
     queue="${queue%%_*}"
-    $PRINTF "    %2s %s\n" $queue ${jobPath##$JOB_ROOT/}
+    $PRINTF "    %2s  %-50s  %s\n" $queue ${jobPath##$JOB_ROOT/} $modName
 done
-
-
