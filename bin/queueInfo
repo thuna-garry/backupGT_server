@@ -28,8 +28,13 @@ for f in `$LS $QUEUE_ROOT/mutex_* 2> /dev/null`; do
     $PRINTF "    %6s %4s %s\n" $pid "$alive" ${f##$QUEUE_ROOT/}
 done
 
+<<<<<<< HEAD
 echo "Running Jobs:"
 for f in `$LS $QUEUE_ROOT/mx_* 2> /dev/null`; do
+=======
+echo "Running Jobs"
+for f in $QUEUE_ROOT/mx_*; do
+>>>>>>> 896f7c829f367c918da92804b03ec5415e4d1be6
     jobPath=`$AWK '/^jobPath:/ {printf "%s", $2}' $f`
     modName=`$AWK '/^modName:/ {printf "%s", $2}' $f`
     queue="${f#*mx_}"
