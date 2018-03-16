@@ -139,13 +139,13 @@ fi
 timeStamp=`$DATE -u +${DATE_FORMAT}z`
 thisMutex=`$MKTEMP $queueDir/mutex_${qrNum}_${timeStamp}_XXXXXX`
 $ECHO "$$" > $thisMutex
-$SLEEP 1
+$SLEEP 2
 
 
 #----------------
 # see if thisMutex is governing for this qrNum
 #----------------
-for mutex in $queueDir/mutex_${qrNum}*; do
+for mutex in `$LS $queueDir/mutex_${qrNum}* 2>/dev/null`; do
     if [ "$mutex" = $thisMutex ]; then
         #this mutex is controlling
         break
@@ -190,12 +190,12 @@ trap cleanup 0 SIGHUP SIGINT SIGQUIT SIGTERM
 runningJobs=/tmp/${0##*/}.$$.runningJobs
 channelsInUse=/tmp/${0##*/}.$$.chennelsInUse
 
-for f in $queueDir/mx_*; do 
+for f in `$LS $queueDir/mx_* 2>/dev/null`; do 
     $AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f  2>/dev/null  >> $runningJobs
     $AWK '/^netChannel:/ {printf "%s", $2}'                    $f  2>/dev/null  >> $channelsInUse
 done
 
-for f in $queueDir/qj_*; do
+for f in `$LS $queueDir/qj_* 2>/dev/null`; do
     # see if job already running
     jobPath=`$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f`
     if grep -q "$jobPath" $runningJobs; then
