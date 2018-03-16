@@ -30,10 +30,9 @@ done
 
 echo "Running Jobs"
 for f in $QUEUE_ROOT/mx_*; do
-    jobPath=`$AWK '/^jobDir:/ {printf "%s/", $2} /^jobFile/ {print $2}' $f`
+    jobPath=`$AWK '/^jobPath:/ {printf "%s", $2}' $f`
+    modName=`$AWK '/^modName:/ {printf "%s", $2}' $f`
     queue="${f#*mx_}"
     queue="${queue%%_*}"
-    $PRINTF "    %2s %s\n" $queue ${jobPath##$JOB_ROOT/}
+    $PRINTF "    %2s  %-50s  %s\n" $queue ${jobPath##$JOB_ROOT/} $modName
 done
-
-
