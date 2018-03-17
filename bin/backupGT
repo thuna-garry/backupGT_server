@@ -636,10 +636,10 @@ doModule_file () {
 
     if [ "$STORAGE_IS_ZFS" -a "$method" = "rsync" ]; then
         local usingRsyncLinkDest=""
-        local usingRsyncInplce="true"
+        local usingRsyncInplace="true"
     else
         local usingRsyncLinkDest="true"
-        local usingRsyncInplce=""
+        local usingRsyncInplace=""
     fi
     
     local newDir=${baseName}_${timeStamp}_${RETENSION_TYPE}
@@ -699,7 +699,7 @@ doModule_file () {
         if [ "$usingRsyncLinkDest" ]; then
             [ "$DEBUG" ] && $PRINTF 'debug: seedDir  = "%s"\n' $seedDir  1>&2
             RSYNC_OPTS="$RSYNC_OPTS  --link-dest=$seedDir"
-        else  # usingRsyncInplce
+        else  # usingRsyncInplace
             # move the seedDir to become our working dir (if it exists)
             mv $seedDir $workDir
             rm -f $seedDir.log
