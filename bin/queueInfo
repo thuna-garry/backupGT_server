@@ -28,11 +28,19 @@ for f in `$LS $QUEUE_ROOT/mutex_* 2> /dev/null`; do
     $PRINTF "    %6s %4s %s\n" $pid "$alive" ${f##$QUEUE_ROOT/}
 done
 
+
 echo "Running Jobs:"
+now=`$DATE -u +${DATE_FORMAT}`
+$PRINTF "    %-2s  %-12s  %-50s  %-s\n" q  runTime      "job file"                                         module
+$PRINTF "    %-2s  %-12s  %-50s  %-s\n" == ============ ================================================== ===================
 for f in `$LS $QUEUE_ROOT/mx_* 2> /dev/null`; do
     jobPath=`$AWK '/^jobPath:/ {printf "%s", $2}' $f`
     modName=`$AWK '/^modName:/ {printf "%s", $2}' $f`
     queue="${f#*mx_}"
     queue="${queue%%_*}"
-    $PRINTF "    %2s  %-50s  %s\n" $queue ${jobPath##$JOB_ROOT/} $modName
+    started=`$ECHO $f | awk -F_ '{print $3}'`
+    runTime=`dateDiffFmt $now $started`
+    $PRINTF "    %2s  %12s  %-50s  %s\n" $queue $runTime ${jobPath##$JOB_ROOT/} $modName
 done
+
+
