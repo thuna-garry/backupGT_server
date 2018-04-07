@@ -945,7 +945,7 @@ doModule_zfs () {
         $SUDO $ZFS create -o quota=$TMP_DS_MAX_SIZE $TMP_DS
     else
         [ -n "$TMP_DS_MAX_SIZE" ] && \
-            [ `SUDO $ZFS get -H -o value quota $TMP_DS 2>/dev/null` == "none" ] && \
+            [ `$SUDO $ZFS get -H -o value quota $TMP_DS 2>/dev/null` = "none" ] && \
             $SUDO $ZFS set quota=$TMP_DS_MAX_SIZE $TMP_DS
     fi
     TMP_DIR="`$SUDO $ZFS list -H -r -o mountpoint $TMP_DS`"
@@ -1082,7 +1082,7 @@ doModule_zfs2 () {
             $ECHO "=============================================================================="
 
 
-            local modDir=`zfs list -Ho mountpoint "$modDS"`
+            local modDir=`$SUDO $ZFS list -Ho mountpoint "$modDS"`
             pruneOldBackups "$modDir" "$modDS" | $TEE -a $workLog
             ;;
     esac
