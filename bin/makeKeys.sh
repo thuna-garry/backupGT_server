@@ -6,7 +6,7 @@
 ###############################################################################
 
 HOME_DIR=${0%/*}/..
-SERVER_DESC=`hostname`
+SERVER_DESC=`hostname -f`
 TARGET_SCRIPT="/root/incomingBackups/backupGT.target"
 
 
@@ -32,7 +32,7 @@ for i in "" $list; do
     fi
 
     if [ -f "$HOME_DIR/keys/backupGT${keySuffix}.key" ]; then
-        printf 'key number %s allready exists... skipping.\n' $i
+        printf 'key number "%s" allready exists... skipping.\n' $i
         continue
     else
         printf '\n======== generating key %s ============\n' $i
