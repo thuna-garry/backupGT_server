@@ -288,7 +288,7 @@ if [ ! "$DEBUG" ]; then
             if [ $rc -eq 0 -a -f "${modListPath}" ]; then
                 #sucessful so save jobParms in modList
                 parmString=`$ECHO "" | makeAssignment "jobParms" "$jobParms"`
-                $SED -i "" -e "s/$/ ${parmString}/" ${modListPath}
+                $SED -i -e "s/$/ ${parmString}/" ${modListPath}
             fi
         
         else
