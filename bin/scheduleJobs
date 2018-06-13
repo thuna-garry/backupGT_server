@@ -197,9 +197,9 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         # set default job control parameters and source the jobControl file
         JOB_INTERVAL=1440                      #set default 1 day                    used by needToQueue
         JOB_RETRY_INTERVAL=60                  #set default 1 hour                   used by needToQueue
-        JOB_PRIORITY=50                        #set default medium                   used by callEnqueu
-        JOB_NET_CHANNEL=${jobDir#$JOB_ROOT/}   #set default subdir of the JOB_ROOT   used by callEnqueu
-        JOB_EXTRA_PARMS=""                     #set default                          passed to needToQueue
+        JOB_PRIORITY=50                        #set default medium                   used by callEnqueue
+        JOB_NET_CHANNEL=${jobDir#$JOB_ROOT/}   #set default subdir of the JOB_ROOT   used by callEnqueue
+        JOB_EXTRA_PARMS=""                     #set default                          passed to callEnqueue
         . $jobControlFile
         [ -f "${jobPath}${JOB_CONTROL_SUFFIX}" ] && . "${jobPath}${JOB_CONTROL_SUFFIX}"
         saveJI="$JOB_INTERVAL"
@@ -212,6 +212,7 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         # consider the job file itself (without a module being specified)
         #----------------
         if needToQueue "$jobPath" "$JOB_MODLIST_STATUS"; then
+            JOB_NET_CHANNEL=`date +%N`  # set unique channel name - job is tiny so let it run even if channel already in use
             callEnqueue "$jobPath" "" \
                         "000000" "235959" \
                         ${COMMAND_LINE_PARMS[@]} $JOB_EXTRA_PARMS 
@@ -239,6 +240,7 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
             [ "$VERBOSE" ] && $ECHO "               JOB_EXTRA_PARMS    = " $JOB_EXTRA_PARMS
 
             if needToQueue "$jobPath" "$modName"; then
+                [ "$JOB_NET_CHANNEL" = "*" ] && JOB_NET_CHANNEL=${jobPath#$JOB_ROOT/}
                 utcWindowStart=`$ECHO "$modComment" | parseAssignment utcWindowStart`
                 utcWindowEnd=`  $ECHO "$modComment" | parseAssignment utcWindowEnd`
                 callEnqueue "$jobPath" "$modName" \

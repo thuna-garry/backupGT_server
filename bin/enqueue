@@ -28,8 +28,8 @@
 #     jobDir:   <jobDir>
 #     jobFile:  <jobFile>
 #     modName:  <modName>
-#     utcWindowStart: <utcWindowStart>
-#     utcWindowEnd:   <utcWindowEnd>
+#     utcWindowStart:  <utcWindowStart>
+#     utcWindowEnd:    <utcWindowEnd>
 #     netChannel:   <netChannel>
 #     jobParms: [all non-option command line parameters]
 #
