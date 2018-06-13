@@ -170,7 +170,7 @@ callEnqueue () {
         "-s" "$modName"                           \
         "-p" "$JOB_PRIORITY"                      \
         "-u" "${utcWindowStart},${utcWindowEnd}"  \
-        "-c" "$JOB_NET_CHANNEL"  \
+        "-c" "$JOB_NET_CHANNEL"                   \
         "--" $*
     if [ $? -eq 100 ]; then
         [ "$VERBOSE" ] && $ECHO '          . attempted enqueue but job already queued'

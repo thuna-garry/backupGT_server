@@ -205,10 +205,22 @@ jobControlStatus () {
     [ "$SCRIPTED_MODE" ] || $ECHO "$SEPARATOR_LINE"
 #    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "Host/Module                    " "Status " "Date              " "Age       "
 #    [ "$SCRIPTED_MODE" ] || $PRINTF "%-40s        %s %s %s %s\n" "-------------------------------" "-------" "------------------" "----------"
+
+    curJobDir=
     $FIND $JOB_ROOT -type d -name "$findName" | sort \
     | while read statusDir; do
         jobPath=${statusDir%${JOB_STATUS_DIR_SUFFIX}}
         jobName=${jobPath##*/}
+        jobDir=${jobPath%/*}
+
+        if [ x"$jobDir" != x"$curJobDir" ]; then
+            [ "$SCRIPTED_MODE" ] || $ECHO 
+            [ "$SCRIPTED_MODE" ] || $ECHO 
+            [ "$SCRIPTED_MODE" ] || $ECHO "----- ${jobDir##*/} ----------------" 
+            [ "$SCRIPTED_MODE" ] || $ECHO 
+            curJobDir=$jobDir
+        fi
+
         jobStatusLine=`tail -1 ${statusDir}/${JOB_MODLIST_STATUS}`
         runState=`$ECHO $jobStatusLine | parseAssignment runState`
         runDate=` $ECHO $jobStatusLine | parseAssignment runDate`
@@ -263,8 +275,13 @@ targetHostStatus () {
     fi
     
     curHost=
-    ls $findPat/$MODULE_STATUS_FILE_NAME $findPat/*_WIP.log 2>/dev/null \
-    | sort | while read f; do
+    ls $findPat/$MODULE_STATUS_FILE_NAME $findPat/*_WIP.log 2>/dev/null  \
+    | awk -F'[/]' '{
+                     domainPieces = split($4, h, "[.]");
+                     printf("%s %s %s %s\n", $0, $4, $5, h[domainPieces-1]);
+                  }'  \
+    | sort -k4 -k2 -k3  \
+    | while read f otherStuff; do
         itemFound=${f##*/}
         modDir=${f%/*}
         modName=${modDir##*/}
@@ -273,6 +290,13 @@ targetHostStatus () {
 
         if [ x"$hostName" != x"$curHost" ]; then
             $ECHO 
+            domain1=`echo "$curHost"  | rev | cut -d\. -f2 | rev`
+            domain2=`echo "$hostName" | rev | cut -d\. -f2 | rev`
+            if [ x"$domain2" != x"$domain1" ]; then
+                [ "$SCRIPTED_MODE" ] || $ECHO 
+                [ "$SCRIPTED_MODE" ] || $ECHO "----- $domain2 ----------------" 
+                [ "$SCRIPTED_MODE" ] || $ECHO 
+            fi
             $ECHO "$hostName   $hostDir"
             curHost=$hostName
         fi

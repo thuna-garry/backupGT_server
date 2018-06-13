@@ -17,13 +17,14 @@ fi
 # display info
 ###############################################################################
 $ECHO "Active Queues:"
-for f in `$LS $QUEUE_ROOT/mutex_* 2> /dev/null`; do
+for f in `$LS $QUEUE_ROOT/mutex_* 2>/dev/null`; do
     pid=`cat $f`
     prog=`ps -q $pid -o comm=`
     if [ "$prog" = "runQueue" ]; then
         alive=""
     else
         alive="dead"
+        continue
     fi
     $PRINTF "    %6s %4s %s\n" $pid "$alive" ${f##$QUEUE_ROOT/}
 done
@@ -33,14 +34,19 @@ echo "Running Jobs:"
 now=`$DATE -u +${DATE_FORMAT}`
 $PRINTF "    %-2s  %-12s  %-50s  %-s\n" q  runTime      "job file"                                         module
 $PRINTF "    %-2s  %-12s  %-50s  %-s\n" == ============ ================================================== ===================
-for f in `$LS $QUEUE_ROOT/mx_* 2> /dev/null`; do
+for f in `$LS $QUEUE_ROOT/mx_* 2>/dev/null`; do
     jobPath=`$AWK '/^jobPath:/ {printf "%s", $2}' $f`
     modName=`$AWK '/^modName:/ {printf "%s", $2}' $f`
     queue="${f#*mx_}"
     queue="${queue%%_*}"
     started=`$ECHO $f | awk -F_ '{print $3}'`
     runTime=`dateDiffFmt $now $started`
-    $PRINTF "    %2s  %12s  %-50s  %s\n" $queue $runTime ${jobPath##$JOB_ROOT/} $modName
+
+    pid=`cat $QUEUE_ROOT/mutex_${queue}_* 2>/dev/null`
+    prog=`ps -q $pid -o comm=  2>/dev/null`
+    if [ "$prog" = "runQueue" ]; then
+        $PRINTF "    %2s  %12s  %-50s  %s\n" $queue $runTime ${jobPath##$JOB_ROOT/} $modName
+    fi
 done
 
 
