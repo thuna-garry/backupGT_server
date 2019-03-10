@@ -206,12 +206,14 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2016.01.06'
+LAST_MODIFIED_DATE='2019.03.10'
 
 DATE_CMD="$DATE -u +${DATE_FORMAT}z"
 ELAPSED_CMD="$DATE +%s"
 
 unset SSH_AUTH_SOCK       #prevent ssh agent forwarding
+
+SSH_CONFIG_OPTS="-o ForwardAgent=yes -o ForwardX11=no -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o BatchMode=yes"
 
 
 ###############################################################################
@@ -431,26 +433,6 @@ defaultEnvironment() {
 }
 
 
-getModuleList () {
-    # obtain complete list of modules from target
-    [ "$TUNNEL" ] && tunnel_create
-    case "$TRANSPORT" in
-        rsync)
-            [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
-                                  $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
-            rc=$?
-            ;;
-        ssh)
-            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	modName=$MODULE" 1>&2
-                                  $SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "_listModules	modName=$MODULE"
-            rc=$?
-            ;;
-    esac
-    [ "$TUNNEL" ] && tunnel_destroy
-    return $rc  #only accessible to caller if output redirected to (tmp)file
-}
-
-
 resolveRetension () {
     local val
     local pos
@@ -487,8 +469,41 @@ resolveRetension () {
 
 
 ###############################################################################
-# backup modules (all or 1) for a particular host
+# backup modules (one or all) for a particular host
 ###############################################################################
+getModuleList () {
+    # obtain complete list of modules from target
+    [ "$TUNNEL" ] && tunnel_create
+    case "$TRANSPORT" in
+        rsync)
+            [ "$DEBUG" ] && $ECHO $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 1>&2
+                                  $SUDO $RSYNC ${RSYNC_OPTS} ${RSYNC_HOST}:: 
+            rc=$?
+            ;;
+        ssh)
+            [ "$DEBUG" ] && $ECHO $SUDO $SSH ${SSH_OPTS} ${SSH_CONFIG_OPTS} ${SSH_HOST} "_listModules	modName=$MODULE" 1>&2
+                                  $SUDO $SSH ${SSH_OPTS} ${SSH_CONFIG_OPTS} ${SSH_HOST} "_listModules	modName=$MODULE"
+            rc=$?
+            ;;
+    esac
+    [ "$TUNNEL" ] && tunnel_destroy
+    return $rc  #only accessible to caller if output redirected to (tmp)file
+}
+
+
+reconcileModuleListWithStatusDir () {
+    # remove any statusDir entries which are no longer mentioned in the moduleList
+    local jobModListPath="$1"
+    local statusDir=${jobModListPath/.modList/.status}
+    
+    for f in `ls $statusDir | grep -v %modList`; do
+        if ! grep -q "^$f" $jobModListPath; then
+           rm -f $statusDir/$f
+        fi
+    done
+}
+
+
 doList () {
     local rc
 
@@ -499,14 +514,15 @@ doList () {
     [ "$VERBOSE" ] && $ECHO "    retrieving module list"
 
     # create a temporary file in which to stash the list
-    local modListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXXX`
-    getModuleList > $modListPath
+    local tmpModListPath=`$MKTEMP /tmp/${SCRIPT_NAME}_XXXXXX`
+    getModuleList > $tmpModListPath
     rc=$?
     if [ $rc -ne 0 ]; then
         $ECHO "    ERROR: failed to retrieve module list"
         $ECHO "        check communication with target host"
+        $ECHO "        check target.modList doesn't have leading whitespace on output"
         [ "$MODULE" ] && $ECHO "        and confirm that it has a module named \"$MODULE\""
-        $RM -f "$modListPath"
+        $RM -f "$tmpModListPath"
         return $rc
     fi
 
@@ -514,12 +530,13 @@ doList () {
     if [ "$JOB_MOD_LIST_ONLY" ]; then
         if [ -z "$JOB_MOD_LIST_PATH" ]; then
             # if not supplied then use stdout
-            $CAT <"$modListPath"
+            $CAT <"$tmpModListPath"
         else
             $ECHO "    writing module list to " "$JOB_MOD_LIST_PATH"
-            $CAT <"$modListPath" >"$JOB_MOD_LIST_PATH"
+            $CAT <"$tmpModListPath" >"$JOB_MOD_LIST_PATH"
+            reconcileModuleListWithStatusDir "$JOB_MOD_LIST_PATH"
         fi
-        $RM -f "$modListPath"
+        $RM -f "$tmpModListPath"
         return 0
     fi
 
@@ -527,10 +544,10 @@ doList () {
     if [ "$MODULE" ]; then    
         $ECHO "    module $MODULE is"
         $ECHO -n "        "
-        $GREP "^${MODULE}	" "$modListPath"
+        $GREP "^${MODULE}	" "$tmpModListPath"
     else
         $ECHO "    available modules are"
-        $CAT "$modListPath" | while read mod; do
+        $CAT "$tmpModListPath" | while read mod; do
             $ECHO "        $mod"
         done 
     fi
@@ -566,9 +583,9 @@ doList () {
                 $PRINTF "\n\n\n"
             fi
         fi
-    done <<< "`$CAT $modListPath`"
+    done <<< "`$CAT $tmpModListPath`"
     $ECHO
-    $RM -f "$modListPath"
+    $RM -f "$tmpModListPath"
     [ "$TUNNEL" ] && tunnel_destroy
     return $rc
 }
@@ -704,7 +721,7 @@ doModule_file () {
             # move the seedDir to become our working dir (if it exists)
             mv $seedDir $workDir
             rm -f $seedDir.log
-            RSYNC_OPTS="$RSYNC_OPTS --inplace"
+            RSYNC_OPTS="$RSYNC_OPTS  --inplace"
         fi
     fi
 
@@ -760,28 +777,28 @@ doModule_file () {
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
 		$SUDO $RSYNC -a $RSYNC_OPTS  
 		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
-		    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"  
+		    -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"  
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
 		$SUDO $RSYNC -a $RSYNC_OPTS  
 		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
-		    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"  
+		    -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"  
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
             if [ "$VERBOSE" ]; then
                 $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
                     --partial  --stats  --delete --delete-during --progress  --numeric-ids                        \
-                    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"    \
+                    -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"    \
                     ${SSH_HOST}::${MODULE} ${workDir}                                                             \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[0]}
             else
                 $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
                     --partial  --stats  --delete --delete-during --progress  --numeric-ids                        \
-                    -e "$SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment}"    \
+                    -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"    \
                     ${SSH_HOST}::${MODULE} ${workDir}                                                             \
                     >> $workLog 2>&1
                 rcDetail=$?
@@ -796,25 +813,25 @@ doModule_file () {
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
-		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"
+		$SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"
 		    dummyCommand_to_inform_ssh_that_there_is_no_tty
 		    | $TAR xvf - -C ${workDir} 
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
-		$SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"
+		$SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"
 		    dummyCommand_to_inform_ssh_that_there_is_no_tty
 		    | $TAR xvf - -C ${workDir} 
 		__CMD__
 
             if [ "$VERBOSE" ]; then
-                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"  \
+                $SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"  \
                     dummyCommand_to_inform_ssh_that_there_is_no_tty                                             \
                     | $TAR xvf - -C ${workDir}                                                                  \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[1]}
             else
-                $SUDO $SSH ${sshOpts} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment}"  \
+                $SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"  \
                     dummyCommand_to_inform_ssh_that_there_is_no_tty                                             \
                     | $TAR xvf - -C ${workDir}                                                                  \
                     >> $workLog 2>&1
@@ -1013,11 +1030,11 @@ doModule_zfs2 () {
     case $method in
         zfs)
             [ "$DEBUG" ] && $CAT <<-__CMD__
-		$SUDO $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"
+		$SUDO $SSH ${SSH_OPTS} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"
 		    | $SUDO $ZFS receive -vuF "$modDS"
 		__CMD__
         
-            $SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"  \
+            $SSH ${SSH_OPTS} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment} lastSnap=$lastSnap"  \
                 | $SUDO $ZFS receive -vuF "$modDS" 
             rc=$?
             ;;
@@ -1025,14 +1042,14 @@ doModule_zfs2 () {
         zfs.rsync)
             [ "$DEBUG" ] && $CAT <<-__CMD__
 		$SUDO $RSYNC $RSYNC_OPTS  
-		    --partial  --stats  --progress  --numeric-ids --inplace
-		    -e "$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"
+		    --partial  --stats  --progress  --numeric-ids  --inplace
+		    -e "$SSH ${SSH_OPTS} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"
 		    ${SSH_HOST}::${MODULE}/${MODULE}.snapExport.gz ${workDir}
 		__CMD__
         
             $SUDO $RSYNC $RSYNC_OPTS                                                                                       \
-                --partial  --stats  --progress  --numeric-ids --inplace                                                    \
-                -e "$SSH ${SSH_OPTS} -o StrictHostKeyChecking=no ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"  \
+                --partial  --stats  --progress  --numeric-ids  --inplace                                                    \
+                -e "$SSH ${SSH_OPTS} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment} lastSnap=$lastSnap"  \
                 ${SSH_HOST}::${MODULE}/${MODULE}.snapExport.gz ${workDir}
             rc=$?
             ;;
@@ -1099,10 +1116,10 @@ tunnel_create () {
     $ECHO -n "    creating tunnel... "   1>&2
     [ "$DEBUG" ] && $ECHO                1>&2
     [ "$DEBUG" ] && $ECHO -n "        "  1>&2
-    [ "$DEBUG" ] && $ECHO $SSH $TUNNEL_OPTS -o StrictHostKeyChecking=no $TUNNEL_HOST 1>&2
-                          $SSH $TUNNEL_OPTS -o StrictHostKeyChecking=no $TUNNEL_HOST &
+    [ "$DEBUG" ] && $ECHO $SSH $TUNNEL_OPTS ${SSH_CONFIG_OPTS} $TUNNEL_HOST 1>&2
+                          $SSH $TUNNEL_OPTS ${SSH_CONFIG_OPTS} $TUNNEL_HOST &
     tunnelPid=$!
-    $SLEEP 5
+    $SLEEP 30
     $ECHO "    done" 1>&2
 }
 

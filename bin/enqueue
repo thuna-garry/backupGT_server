@@ -100,7 +100,6 @@ printFullUsage() {
 
 
 parseOptions() {
-    local opSsupplied
     while getopts ":j:s:p:u:c:v" arg; do
         case $arg in
             j) jobPath="${OPTARG}" ;;
