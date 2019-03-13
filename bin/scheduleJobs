@@ -53,7 +53,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2013.10.04'
+LAST_MODIFIED_DATE='2019.03.10'
 
 
 ###############################################################################
@@ -208,6 +208,9 @@ $FIND $JOB_ROOT -name $JOB_CONTROL | while read jobControlFile; do
         saveJC="$JOB_NET_CHANNEL"
         saveJX="$JOB_EXTRA_PARMS"
         
+        [ ! "$saveJC" ] && saveJC==`date +%N`  # if the netChannel was explicitly set to nothing then make it unique
+
+
         #----------------
         # consider the job file itself (without a module being specified)
         #----------------

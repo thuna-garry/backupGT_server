@@ -496,9 +496,9 @@ reconcileModuleListWithStatusDir () {
     local jobModListPath="$1"
     local statusDir=${jobModListPath/.modList/.status}
     
-    for f in `ls $statusDir | grep -v %modList`; do
-        if ! grep -q "^$f" $jobModListPath; then
-           rm -f $statusDir/$f
+    for f in `$LS $statusDir | $GREP -v %modList`; do
+        if ! $GREP -q "^$f" $jobModListPath; then
+           $RM -f $statusDir/$f
         fi
     done
 }
@@ -624,6 +624,7 @@ doModule () {
 doModule_file () {
     local modComment="$@"
     local method=`$ECHO $modComment | parseAssignment method`
+    local rsyncLinkOpts
 
     local timeStamp=`$DATE_CMD`
     local elapsedStart=`$ELAPSED_CMD`
@@ -716,12 +717,12 @@ doModule_file () {
     if [ "$seedDir" ]; then
         if [ "$usingRsyncLinkDest" ]; then
             [ "$DEBUG" ] && $PRINTF 'debug: seedDir  = "%s"\n' $seedDir  1>&2
-            RSYNC_OPTS="$RSYNC_OPTS  --link-dest=$seedDir"
+            rsyncLinkOpts="--link-dest=$seedDir"
         else  # usingRsyncInplace
             # move the seedDir to become our working dir (if it exists)
             mv $seedDir $workDir
             rm -f $seedDir.log
-            RSYNC_OPTS="$RSYNC_OPTS  --inplace"
+            rsyncLinkOpts="--inplace"
         fi
     fi
 
@@ -741,25 +742,25 @@ doModule_file () {
     case $method.$TRANSPORT in 
         rsync.rsync)
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
-                $SUDO $RSYNC -a $RSYNC_OPTS  
+                $SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts
 		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    ${RSYNC_HOST}::${MODULE} ${workDir}/
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
-		$SUDO $RSYNC -a $RSYNC_OPTS  
+		$SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts
 		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    ${RSYNC_HOST}::${MODULE} ${workDir}/
 		__CMD__
 
             if [ "$VERBOSE" ]; then
-                $SUDO $RSYNC -a $RSYNC_OPTS                                                 \
+                $SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts                                  \
                     --partial  --stats  --delete --delete-during --progress  --numeric-ids  \
                     ${RSYNC_HOST}::${MODULE} ${workDir}/                                    \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[0]}
             else
-                $SUDO $RSYNC -a $RSYNC_OPTS                                                 \
+                $SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts                                  \
                     --partial  --stats  --delete --delete-during --progress  --numeric-ids  \
                     ${RSYNC_HOST}::${MODULE} ${workDir}/                                    \
                     >> $workLog 2>&1
@@ -775,31 +776,31 @@ doModule_file () {
             fi
 
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
-		$SUDO $RSYNC -a $RSYNC_OPTS  
+		$SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts
 		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"  
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
-		$SUDO $RSYNC -a $RSYNC_OPTS  
+		$SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts
 		    --partial  --stats  --delete --delete-during --progress  --numeric-ids
 		    -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"  
 		    ${SSH_HOST}::${MODULE} ${workDir}
 		__CMD__
 
             if [ "$VERBOSE" ]; then
-                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                    --partial  --stats  --delete --delete-during --progress  --numeric-ids                        \
+                $SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts                                                \
+                    --partial  --stats  --delete --delete-during --progress  --numeric-ids                \
                     -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"    \
-                    ${SSH_HOST}::${MODULE} ${workDir}                                                             \
+                    ${SSH_HOST}::${MODULE} ${workDir}                                                     \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[0]}
             else
-                $SUDO $RSYNC -a $RSYNC_OPTS                                                                       \
-                    --partial  --stats  --delete --delete-during --progress  --numeric-ids                        \
+                $SUDO $RSYNC -a $RSYNC_OPTS $rsyncLinkOpts                                                \
+                    --partial  --stats  --delete --delete-during --progress  --numeric-ids                \
                     -e "$SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} ${MODULE}	${modComment}"    \
-                    ${SSH_HOST}::${MODULE} ${workDir}                                                             \
+                    ${SSH_HOST}::${MODULE} ${workDir}                                                     \
                     >> $workLog 2>&1
                 rcDetail=$?
             fi
