@@ -61,7 +61,7 @@ fi
 ###############################################################################
 # globals
 ###############################################################################
-LAST_MODIFIED_DATE='2012.10.14'
+LAST_MODIFIED_DATE='2019.04.10'
 
 
 ###############################################################################
@@ -162,23 +162,23 @@ $ECHO jobPath:  $jobDir/$jobFile      >> $tmpPath
 $ECHO jobDir:   $jobDir               >> $tmpPath
 $ECHO jobFile:  $jobFile              >> $tmpPath
 $ECHO modName:  $modName              >> $tmpPath
-$ECHO utcWindowStart: $utcWindowStart >> $tmpPath
-$ECHO utcWindowEnd:   $utcWindowEnd   >> $tmpPath
-$ECHO netChannel: $netChannel         >> $tmpPath
-$ECHO jobParms: "$@"                  >> $tmpPath
 
 # check that the candidate file is not a duplicate of an
 # already queued or running job
 crc=`$CKSUM $tmpPath | $SED -e 's/^\([[:alnum:]]*\).*/\1/'`
 isDup=`$FIND $QUEUE_ROOT -type f -name '*qj_*_'$crc`
-if [ -z "$isDup" ]; then
-    timeStamp=`$DATE -u +${DATE_FORMAT}z`
-    qjPath=$QUEUE_ROOT/qj_${priority}_${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
-    $MV $tmpPath $qjPath
-    [ "$VERBOSE" ] && $ECHO "            ENQUEUED as: $qjPath"
-else
+if [ -n "$isDup" ]; then
     [ "$VERBOSE" ] && $ECHO "            job already queued as: ${isDup##*/}"
     $RM -f $tmpPath
     exit 100
 fi
 
+$ECHO utcWindowStart: $utcWindowStart >> $tmpPath
+$ECHO utcWindowEnd:   $utcWindowEnd   >> $tmpPath
+$ECHO netChannel: $netChannel         >> $tmpPath
+$ECHO jobParms: "$@"                  >> $tmpPath
+
+timeStamp=`$DATE -u +${DATE_FORMAT}z`
+qjPath=$QUEUE_ROOT/qj_${priority}_${timeStamp}_${jobFile}_${modName:-$JOB_MODLIST_STATUS}_${crc}
+$MV $tmpPath $qjPath
+[ "$VERBOSE" ] && $ECHO "            ENQUEUED as: $qjPath"
