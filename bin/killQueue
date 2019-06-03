@@ -39,12 +39,11 @@ getcpids() {
 ###############################################################################
 # main
 ###############################################################################
-runQueuePid=`$SUDO $PS auxwww | $GREP "runQueue $1" | $GREP -v grep | $AWK '{print $2}'`
-if [ -n "$runQueuePid" ]; then
+runQueuePids=`$SUDO $PS auxwww | $GREP "runQueue $1" | $GREP -v grep | $AWK '{print $2}'`
+for runQueuePid in $runQueuePids; do
     pids=`pstree -p $runQueuePid | grep -o '([0-9]\+)' | grep -o '[0-9]\+'`
     $SUDO $KILL -9 $pids
-fi
-
+done
 
 
 
