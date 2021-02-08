@@ -1,1 +1,12 @@
+# a leading or contained / limits the match to the same directory as the .gitignore
+# a trailing / only matches directories
+# otherwise rule also applies to subdirectories
+
+# ignore everything in same directory as .gitignore and subdirs
 *
+
+# except/keep the following
+!.gitignore
+!/example
+!/example/**
+

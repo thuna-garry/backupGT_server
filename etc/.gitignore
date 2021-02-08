@@ -1,1 +1,7 @@
+# a leading or contained / limits the match to the same directory as the .gitignore
+# a trailing / only matches directories
+# otherwise rule also applies to subdirectories
+
+# ignore at any depth
 server.conf
+

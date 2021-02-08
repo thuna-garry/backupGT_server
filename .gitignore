@@ -2,9 +2,6 @@
 # a trailing / only matches directories
 # otherwise rule also applies to subdirectories
 
-# ignore everything in same directory as .gitignore and subdirs
-*
-
-# except/keep the following
-!.gitignore
+# ignore any .zfs at any depth
+.zfs
 

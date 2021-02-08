@@ -427,9 +427,10 @@ parseOptions() {
 
 defaultEnvironment() {
     SSH_HOST=${SSH_HOST:-$SRC_NAME}
-    SSH_OPTS=${SSH_OPTS:-"-l backupGT"}
+    SSH_OPTS=${SSH_OPTS:- -l backupGT}
     RSYNC_HOST=${RSYNC_HOST:-$SRC_NAME}
-    RSYNC_OPTS=${RSYNC_OPTS:-"-vi"}
+    RSYNC_OPTS=${RSYNC_OPTS:- -vi --exclude=.zfs}
+    TAR_OPTS=${TAR_OPTS:- --exclude=.zfs}
 }
 
 
@@ -692,7 +693,7 @@ doModule_file () {
             $SUDO $ZFS set ${ZFS_UPROP_IS_BACKUP}=yes    $modDS
             $SUDO $ZFS set ${ZFS_UPROP_METHOD}=${method} $modDS
         else
-            $MKDIR -p -m 750 $modDir
+            $SUDO $MKDIR -p -m 750 $modDir
         fi
         $SUDO $CHOWN $USER_NUM:$GROUP_NUM $modDir
     fi
@@ -816,25 +817,25 @@ doModule_file () {
             [ "$DEBUG" ] && $CAT <<-__CMD__  1>&2
 		$SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"
 		    dummyCommand_to_inform_ssh_that_there_is_no_tty
-		    | $TAR xvf - -C ${workDir} 
+		    | $TAR xvf - ${TAR_OPTS} -C ${workDir} 
 		__CMD__
 
             $CAT <<-__CMD__                  >> $workLog 
 		$SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"
 		    dummyCommand_to_inform_ssh_that_there_is_no_tty
-		    | $TAR xvf - -C ${workDir} 
+		    | $TAR xvf - ${TAR_OPTS} -C ${workDir} 
 		__CMD__
 
             if [ "$VERBOSE" ]; then
                 $SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"  \
                     dummyCommand_to_inform_ssh_that_there_is_no_tty                                             \
-                    | $TAR xvf - -C ${workDir}                                                                  \
+                    | $TAR xvf - ${TAR_OPTS} -C ${workDir}                                                                  \
                     2>&1 | $TEE -a $workLog
                 rcDetail=${PIPESTATUS[1]}
             else
                 $SUDO $SSH ${sshOpts} ${SSH_CONFIG_OPTS} ${SSH_HOST} "${MODULE}	${modComment}"  \
                     dummyCommand_to_inform_ssh_that_there_is_no_tty                                             \
-                    | $TAR xvf - -C ${workDir}                                                                  \
+                    | $TAR xvf - ${TAR_OPTS} -C ${workDir}                                                                  \
                     >> $workLog 2>&1
                 rcDetail=$?
             fi 

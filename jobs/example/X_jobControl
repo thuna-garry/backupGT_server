@@ -1,0 +1,16 @@
+# number of minutes between rescheduling of jobs
+JOB_INTERVAL=1440
+
+# nubmer of mintues to wait before rescheduling failed jobs
+JOB_RETRY_FAILED=60
+
+# priority: 00=highest  99=lowest (default 50)
+JOB_PRIORITY=75
+
+# netChannel: defaults to subdir of the JOB_ROOT, set empty to permit all jobs to run concurrently
+#JOB_NET_CHANNEL=
+
+# custom options
+JOB_EXTRA_PARMS=""
+
+

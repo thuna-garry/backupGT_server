@@ -1,0 +1,49 @@
+#! /bin/sh
+
+# set 
+#    hostname                                    - the name used on this backup server for directory names
+#    targetHost/targetPort/targetKey/targetUser  - host to backup
+#    viaHost/viaPort/viaKey/viaUser              - [optional] the perimeter host through which to tunnel
+
+bgtDir=/home/backupGT/server
+
+jobDir=`dirname "$0"`
+jobDir=`readlink -f "$jobDir"`
+jobFile=${0##*/}
+jobPath="$jobDir"/"$jobFile"
+
+export PATH=${bgtDir}/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+
+targetUser="root"
+targetKey="backupGT.key"
+
+viaUser="root"
+viaKey="backupGT.key"
+
+doBackup() {
+    if [ -n "$viaHost" ]; then
+        method="ssh:tunnel"
+	tunnelPort=`findUnusedPort.sh` 
+        export SSH_HOST=localhost
+        export SSH_OPTS="-l ${targetUser} -i ${bgtDir}/keys/${targetKey} -p $tunnelPort"
+
+        export TUNNEL_HOST=${viaHost}
+        export TUNNEL_OPTS="-l ${viaUser} -i ${bgtDir}/keys/${viaKey} -p ${viaPort} -N -L ${tunnelPort}:${targetHost}:${targetPort}" 
+    else
+        method="ssh"
+        export SSH_HOST=$targetHost
+        export SSH_OPTS="-l ${targetUser} -i ${bgtDir}/keys/${targetKey} -p $targetPort"
+
+        unset TUNNEL_HOST
+        unset TUNNEL_OPTS
+    fi
+
+    export RSYNC_HOST="$SSH_HOST"
+    export RSYNC_OPTS="${rsyncOpts:- -vi --exclude=.zfs}"
+
+    export TAR_OPTS="${tarOpts:- --exclude=.zfs}"
+
+    ( printenv > /tmp/${jobFile}.${targetHost}.printenv )   #save a copy of env for debug
+    $bgtDir/bin/backupGT -h $hostName -t $method "$@"
+}
+

@@ -88,7 +88,7 @@ parseOptions() {
             t) SHOW_HOST_STATUS=1 ;	SHOW_ALL= ;;
             q) SHOW_QUEUE_STATUS=1 ;	SHOW_ALL= ;;
             u) SHOW_SPACE_UTIL=1  ;	SHOW_ALL= ;;
-            f) exec > ${OPTARG};;
+            f) exec > ${OPTARG} ;;
             H) SCRIPTED_MODE=1 ;;
             s) SUBJECT="${OPTARG}";;
             :) if [ "${OPTARG}" == 'f' ]; then
